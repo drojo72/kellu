@@ -77,7 +77,9 @@ Include the affected version or commit, steps to reproduce, the impact you expec
 ## Secrets management
 
 - Secrets live in the OS keyring (Secret Service on Linux). They are not stored in dotfiles or `.env` files.
-- Entries use the schema `application=kellu`, `name=<service>.<key>`, `tier=<tier>`.
+- Entries have one attribute named `kellu` whose value is `<service>_<key>` (for example `kellu=ai_openrouter_api_key`) and the label `KELLU: <name>`. It is the same shape the earlier prototype used, with a different attribute name, so existing entries and shell habits keep working (`secret-tool lookup kellu ai_openrouter_api_key`).
+- **Tiers are not stored in the keyring.** Kellu derives them from the entry name: prefix `ai_` is `provider`; `github_`, `cloudflare_`, `render_`, `desec_` and `duckdns_` are `infra`; `neon_`, `supabase_` and `mysql_` are `db`. A name that matches nothing defaults to `infra`, so unknown secrets fail closed. Users can override the mapping in `config.toml`.
+- A provider's `keyring_name` in the configuration maps to the entry `ai_<keyring_name>_api_key`.
 
 | Tier | Examples | Availability |
 |---|---|---|
@@ -86,7 +88,7 @@ Include the affected version or commit, steps to reproduce, the impact you expec
 | `db` | database passwords and admin keys | Same as `infra` |
 
 - Secrets are never placed in the model context, in command-line arguments (visible in `/proc`), in the environment of sandboxed processes, or in logs.
-- `kellu keys migrate` copies secrets from a previous keyring schema. It never deletes the originals; removal is a separate, confirmed step. `--dry-run` shows names only, never values.
+- `kellu keys migrate` copies entries from the earlier prototype's attribute (`kai`) to `kellu` for anyone who has not done it by hand. It never deletes the originals; removal is a separate, confirmed step. `--dry-run` shows names only, never values.
 - Use **least-privilege, expiring tokens**. Prefer fine-grained GitHub tokens without `delete_repo`, and rotate keys that were ever pasted into a terminal or chat.
 
 ## Tool risk levels

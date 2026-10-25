@@ -10,7 +10,8 @@ APP_NAME = "kellu"
 APP_DISPLAY_NAME = "Kellu"
 ENV_PREFIX = "KELLU_"
 
-# Value of the ``application`` attribute on keyring entries created by Kellu.
-KEYRING_APPLICATION = "kellu"
+# Keyring entries carry one attribute named like the app, whose value is "<service>_<key>"
+# (for example ``kellu=ai_openrouter_api_key``), plus the label "KELLU: <name>".
+KEYRING_ATTRIBUTE = "kellu"
 # Attribute used by the earlier prototype; read only by the migration command (M3).
 LEGACY_KEYRING_ATTRIBUTE = "kai"

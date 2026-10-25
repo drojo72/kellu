@@ -1,6 +1,7 @@
 # Kellu packaged defaults.
 # Override any of this in ~/.config/kellu/config.toml (see `kellu config path`).
 # Secrets never go in configuration files: use `kellu keys set <name>`.
+# `keyring_name = "openrouter"` resolves to the keyring entry `kellu=ai_openrouter_api_key`.
 
 [providers.openrouter]
 kind = "openai_compat"
