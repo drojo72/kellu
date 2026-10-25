@@ -55,6 +55,7 @@ Include the affected version or commit, steps to reproduce, the impact you expec
 | T9 | **Secrets leaking through logs and session history** | Redaction before writing, truncated content, no raw provider payloads by default. |
 | T10 | **Untrusted extensions** (agents and MCP servers: tool poisoning, malicious tool descriptions, exfiltration) | Run as sandboxed processes with a scrubbed environment. Explicit per-server allowlist. Tool descriptions and outputs are untrusted data. Every tool has a declared risk level. No access to `provider`, `infra` or `db` secrets unless granted per server. Network only through the `network` profile, with confirmation. |
 | T11 | **Configuration tampering** (redirecting provider endpoints to capture API keys, smuggling secrets into files) | TOML only, never code. Secret-looking keys are rejected. Endpoints must use HTTPS (plain HTTP only for localhost) and may not embed credentials. Unknown keys are errors. The user file must be a regular file, not a symlink, owned by the current user and not writable by group or others; it is opened without following symlinks and size-limited. |
+| T12 | **Untrusted editor-side input over LSP** (a root that is the home directory, repository-supplied configuration, open documents that contain secrets) | Roots equal to `$HOME`, an ancestor of it or `/` are rejected, and a project marker or explicit confirmation is required. Settings that arrive from `.kateproject` may only tighten policy, never relax deny globs, sandbox profile or endpoints. Deny globs apply to documents received over LSP, which are never forwarded to a provider. Edits are limited to a validated proposal, inside the scope, with document versions. |
 
 ### Out of scope
 
@@ -99,6 +100,16 @@ Include the affected version or commit, steps to reproduce, the impact you expec
 
 Every tool declares its level in its registration. A tool without a declared level cannot run.
 
+## Authorization model
+
+Full design: [docs/design/permissions-and-sandbox.md](docs/design/permissions-and-sandbox.md).
+
+- **Reading** is granted per project, as read-only, when you open it. A scope root equal to your home directory, an ancestor of it or `/` is refused.
+- **Writing is never a standing permission.** The model proposes changes as data (diffs with hashes); you choose **deny**, **partial** (selected hunks) or **full** (all valid items of that proposal); only the core applies them, after rechecking hashes and scope. If any check fails, nothing is applied.
+- **The real project is never writable from a sandbox.** Tools that need to write run on a staging copy and their result comes back as another proposal.
+- One `Grant` object derives both the path policy and the sandbox mounts, and a test asserts they match.
+- Every proposal, decision and application is recorded in an append-only audit log (mode 0600, hash-chained).
+
 ## Sandbox
 
 Process-spawning tools (shell, tests, formatters) run inside **bubblewrap** on Linux.
@@ -115,6 +126,7 @@ Limits you should know:
 - Some distributions restrict unprivileged user namespaces (for example Ubuntu 24.04). `kellu doctor` checks this.
 - The `network` profile deliberately weakens isolation.
 - macOS and Windows backends are later work; until then those platforms run with a reduced tool set.
+- **bubblewrap before 0.12.0 is affected by CVE-2026-87766** (symlink traversal while bubblewrap creates files in attacker-controlled content during setup). Kellu's mount layout never creates mountpoints inside a project tree, so the precondition does not hold, and `kellu doctor` warns when the version is older. Strict mode (`sandbox.require_patched_bwrap = true`) refuses to run below 0.12.0. Distribution packages may carry the fix without a matching version number, or may drop it again: check your distribution's changelog.
 
 ## Data egress and sanitization
 
@@ -137,9 +149,9 @@ Limits you should know:
 | M0 | This document, `.gitignore` for secrets, CI with `pip-audit` |
 | M1 (done) | No side effects on import; private state directories (0700) and files (0600) opened without following symlinks; strict, secret-free TOML configuration; redacting, rotating logs; session logs that sanitize control characters and cannot forge structure |
 | M2 | Provider timeouts and fallback; schema validation of provider responses; keys passed by header, never in URLs |
-| M3 | Keyring vault with tiers, migration, scrubbed environment, deny globs, redaction v1, risk-based permissions |
-| M4 | Sandbox backend and policies, `kellu doctor`, escape tests |
-| M5 | Tool registry requiring a declared risk level; host-side git and `gh` writes with confirmation |
+| M3 | Keyring vault with tiers, migration, scrubbed environment, deny globs, redaction v1, risk-based permissions, scope and `Grant`, append-only audit log |
+| M4 | Sandbox backend, mounts derived from the `Grant`, staging copy, resource limits, `kellu doctor` (including the bubblewrap version warning), escape tests |
+| M5 | Tool registry requiring a declared risk level; proposal contract and host-side apply of approved hunks; host-side git and `gh` writes with confirmation |
 | M6 | LSP and REPL honoring deny globs and redaction |
 | 0.2.0 | Agent loop gated by the policy engine; injection-oriented tests |
 | 0.4.0 | Memory store with acceptance criteria, expiry and "from memory" labeling |

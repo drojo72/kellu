@@ -14,6 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   rotating logs with redaction hook, append-only session logs, private-file helpers.
 - `kellu doctor` now validates the configuration.
 
+- Design notes: permissions and sandbox (`docs/design/permissions-and-sandbox.md`) and what Kellu can do through Kate's LSP client (`docs/design/lsp-capabilities.md`).
+
 ### Changed
 - Layer `stack` renamed to `projects` (discovery, stack detection, scopes).
 - Architecture rule: packages are created when their milestone starts.

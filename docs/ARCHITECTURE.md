@@ -44,6 +44,11 @@ Rules:
 | MCP server | 0.5.0 | `frontends/mcp_server.py` |
 | MCP client (agents and external tools) | 0.5.0 | `tools/mcp_client.py` |
 | Local runtime detection | 0.5.0 | `providers/local.py` |
+| Scope and grants | M3 | `security/scope.py`, `security/grants.py` |
+| Append-only audit log | M3 | `security/audit.py` |
+| Sandbox mounts derived from a grant, staging copy | M4 | `sandbox/policy.py`, `sandbox/staging.py` |
+| Proposal contract and host-side apply | M5 | `tools/proposal.py`, `tools/apply.py` |
+| Kate LSP server (hover, completion; later diagnostics, code actions) | M6, 0.2.0 | `frontends/lsp/` |
 
 Protocol adapters (ACP, MCP, gateway) are **frontends** or **tools**, never top-level packages.
 
@@ -58,7 +63,7 @@ a declared risk level. The core contains no per-agent code.
 
 The core is trusted: it holds keys and network access and enforces policy. Process-spawning
 tools and extensions run in the sandbox and are untrusted. Model output, repository content and
-web content are untrusted data. See [SECURITY.md](../SECURITY.md).
+web content are untrusted data. See [SECURITY.md](../SECURITY.md) and the design notes in [docs/design/](design/).
 
 ## Adding a module
 

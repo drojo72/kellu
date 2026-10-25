@@ -27,7 +27,7 @@ Kellu lleva asistencia de IA a [Kate](https://kate-editor.org/) sin una pila gr�
 | Versión | Enfoque | Contenido |
 |---|---|---|
 | **0.1.0** | Base segura | Núcleo modular, proveedores unificados (compatible con OpenAI, Google), vault de keyring con niveles, redacción y deny globs, permisos por riesgo, **sandbox** (bubblewrap), herramientas (archivos, shell en sandbox, git), REPL en terminal, LSP para Kate (hover y completado), `kellu doctor` |
-| **0.2.0** | Agente | Loop de agente con herramientas y confirmaciones, etapa de reglas de la cascada, inyección de contexto |
+| **0.2.0** | Agente | Loop de agente con herramientas y confirmaciones, etapa de reglas de la cascada, inyección de contexto, diagnósticos LSP y sugerencias de corrección rápida |
 | **0.3.0** | Interoperabilidad | Gateway local compatible con OpenAI, modo agente ACP |
 | **0.4.0** | Memoria | Almacén de soluciones aceptadas (SQLite por defecto, PostgreSQL + pgvector opcional), etapa de memoria |
 | **0.5.0** | Adaptación | Detección de runtimes locales (Ollama, LM Studio, llama.cpp), perfiles de hardware, servidor y cliente MCP |
@@ -151,7 +151,7 @@ En Kate: *Preferencias → Configurar Kate → Cliente LSP → Configuración de
 }
 ```
 
-El servidor LSP de Kellu ofrece solo **hover** y **completado**. Revisa la documentación del cliente LSP de Kate para el formato exacto en tu versión.
+En 0.1.0 el servidor LSP de Kellu ofrece **hover** y **completado**; los diagnósticos y las sugerencias de corrección rápida llegan con el trabajo del agente en 0.2.0. El chat, la vista previa de diffs y el texto fantasma necesitan otros frontends (ver [docs/design/lsp-capabilities.md](docs/design/lsp-capabilities.md)). Revisa la documentación del cliente LSP de Kate para el formato exacto en tu versión.
 
 ## Configuración
 
