@@ -9,7 +9,7 @@ Kellu is an AI assistant that can read your code, call external model providers 
 Please **do not open a public issue** for security problems.
 
 - Use GitHub's private vulnerability reporting (*Security → Report a vulnerability*) on this repository, or
-- email `drojo72@gmail.com`.
+- email `<security-contact-address>`.
 
 Include the affected version or commit, steps to reproduce, the impact you expect, and whether you want credit. This is a small, maintained-by-one-person project: we aim to acknowledge reports within 7 days and to agree on a disclosure timeline with you. These are goals, not guarantees.
 
@@ -54,6 +54,7 @@ Include the affected version or commit, steps to reproduce, the impact you expec
 | T8 | **Other local users or processes** | Secrets in the OS keyring. State directories created with mode `0700`, files `0600`. |
 | T9 | **Secrets leaking through logs and session history** | Redaction before writing, truncated content, no raw provider payloads by default. |
 | T10 | **Untrusted extensions** (agents and MCP servers: tool poisoning, malicious tool descriptions, exfiltration) | Run as sandboxed processes with a scrubbed environment. Explicit per-server allowlist. Tool descriptions and outputs are untrusted data. Every tool has a declared risk level. No access to `provider`, `infra` or `db` secrets unless granted per server. Network only through the `network` profile, with confirmation. |
+| T11 | **Configuration tampering** (redirecting provider endpoints to capture API keys, smuggling secrets into files) | TOML only, never code. Secret-looking keys are rejected. Endpoints must use HTTPS (plain HTTP only for localhost) and may not embed credentials. Unknown keys are errors. The user file must be a regular file, not a symlink, owned by the current user and not writable by group or others; it is opened without following symlinks and size-limited. |
 
 ### Out of scope
 
@@ -134,7 +135,7 @@ Limits you should know:
 | Milestone | Security deliverable |
 |---|---|
 | M0 | This document, `.gitignore` for secrets, CI with `pip-audit` |
-| M1 | No side effects on import; state directories with restrictive permissions |
+| M1 (done) | No side effects on import; private state directories (0700) and files (0600) opened without following symlinks; strict, secret-free TOML configuration; redacting, rotating logs; session logs that sanitize control characters and cannot forge structure |
 | M2 | Provider timeouts and fallback; schema validation of provider responses; keys passed by header, never in URLs |
 | M3 | Keyring vault with tiers, migration, scrubbed environment, deny globs, redaction v1, risk-based permissions |
 | M4 | Sandbox backend and policies, `kellu doctor`, escape tests |

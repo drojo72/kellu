@@ -41,9 +41,10 @@ dev = [
 kellu = "kellu.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/drojo72/kellu"
-Issues = "https://github.com/drojo72/kellu/issues"
-Security = "https://github.com/drojo72/kellu/security/policy"
+# TODO: replace <your-user> before publishing.
+Homepage = "https://github.com/<your-user>/kellu"
+Issues = "https://github.com/<your-user>/kellu/issues"
+Security = "https://github.com/<your-user>/kellu/security/policy"
 
 # ---------------------------------------------------------------- build ----
 [tool.hatch.version]

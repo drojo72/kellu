@@ -1,0 +1,46 @@
+# Kellu packaged defaults.
+# Override any of this in ~/.config/kellu/config.toml (see `kellu config path`).
+# Secrets never go in configuration files: use `kellu keys set <name>`.
+
+[providers.openrouter]
+kind = "openai_compat"
+base_url = "https://openrouter.ai/api/v1"
+model = "openrouter/auto"
+timeout_s = 60
+keyring_name = "openrouter"
+
+[providers.deepseek]
+kind = "openai_compat"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+timeout_s = 60
+keyring_name = "deepseek"
+
+[providers.google]
+kind = "google"
+# TODO(M2): verify v1 versus v1beta for the selected model before relying on this default.
+base_url = "https://generativelanguage.googleapis.com/v1"
+model = "gemma-4-26b-a4b-it"
+timeout_s = 60
+keyring_name = "google"
+
+[routing.general]
+primary = "google"
+backup = ["deepseek", "openrouter"]
+
+[routing.code]
+primary = "deepseek"
+backup = ["openrouter"]
+
+[routing.explain]
+primary = "google"
+backup = ["openrouter"]
+
+[logging]
+level = "INFO"
+max_bytes = 1000000
+backups = 3
+
+[sessions]
+enabled = true
+max_entry_chars = 2000

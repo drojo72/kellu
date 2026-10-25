@@ -57,3 +57,50 @@ def test_ensure_private_dir_rejects_symlink(fake_home: Path) -> None:
     os.symlink(real, link)
     with pytest.raises(SecurityError):
         paths.ensure_private_dir(link)
+
+
+def test_open_private_append_creates_mode_0600(fake_home: Path) -> None:
+    target = fake_home / "private.log"
+    with paths.open_private_append(target) as handle:
+        handle.write("hello\n")
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    assert target.read_text(encoding="utf-8") == "hello\n"
+
+
+def test_open_private_append_appends(fake_home: Path) -> None:
+    target = fake_home / "append.log"
+    for text in ("one\n", "two\n"):
+        with paths.open_private_append(target) as handle:
+            handle.write(text)
+    assert target.read_text(encoding="utf-8") == "one\ntwo\n"
+
+
+def test_open_private_append_tightens_existing_permissions(fake_home: Path) -> None:
+    target = fake_home / "loose.log"
+    target.write_text("x")
+    target.chmod(0o644)
+    paths.open_private_append(target).close()
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_open_private_append_refuses_symlink(fake_home: Path) -> None:
+    real = fake_home / "real.log"
+    real.write_text("secret")
+    link = fake_home / "link.log"
+    os.symlink(real, link)
+    with pytest.raises(SecurityError):
+        paths.open_private_append(link)
+    assert real.read_text() == "secret"
+
+
+def test_open_private_append_new_only_rejects_existing(fake_home: Path) -> None:
+    target = fake_home / "once.md"
+    paths.open_private_append(target, new_only=True).close()
+    with pytest.raises(FileExistsError):
+        paths.open_private_append(target, new_only=True)
+
+
+def test_ensure_private_file_creates_empty_private_file(fake_home: Path) -> None:
+    target = paths.ensure_private_file(fake_home / "created")
+    assert target.exists()
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600

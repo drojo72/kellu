@@ -1,6 +1,7 @@
 """Environment checks for ``kellu doctor``.
 
-Basic in M0 (tool presence and paths). Sandbox probing and keyring access checks arrive in M4.
+Basic so far: tool presence, configuration validity and paths. Sandbox probing and keyring
+access checks arrive in M4.
 """
 
 from __future__ import annotations
@@ -11,10 +12,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from kellu.common import paths
+from kellu.common.errors import KelluError
+from kellu.core.config import Config, load_config
 
 MIN_PYTHON = (3, 11)
 
 Which = Callable[[str], str | None]
+ConfigLoader = Callable[[], Config]
 
 
 @dataclass(frozen=True)
@@ -33,8 +37,17 @@ def _tool_check(which: Which, binary: str, *, required: bool, purpose: str, hint
     return Check(binary, found is not None, required, detail)
 
 
-def collect_checks(which: Which = shutil.which) -> list[Check]:
-    """Run all checks. ``which`` is injectable so tests never depend on the host."""
+def _config_check(load: ConfigLoader) -> Check:
+    try:
+        config = load()
+    except KelluError as exc:
+        return Check("config", False, True, str(exc))
+    where = str(config.source) if config.source else "packaged defaults"
+    return Check("config", True, True, f"{where} ({len(config.providers)} providers)")
+
+
+def collect_checks(which: Which = shutil.which, load: ConfigLoader = load_config) -> list[Check]:
+    """Run all checks. ``which`` and ``load`` are injectable so tests never depend on the host."""
     py_ok = sys.version_info[:2] >= MIN_PYTHON
     return [
         Check(
@@ -44,6 +57,7 @@ def collect_checks(which: Which = shutil.which) -> list[Check]:
             f"{sys.version_info.major}.{sys.version_info.minor} "
             f"(need >= {MIN_PYTHON[0]}.{MIN_PYTHON[1]})",
         ),
+        _config_check(load),
         _tool_check(
             which,
             "secret-tool",
@@ -68,9 +82,13 @@ def collect_checks(which: Which = shutil.which) -> list[Check]:
     ]
 
 
-def run(which: Which = shutil.which, out: Callable[[str], None] = print) -> int:
+def run(
+    which: Which = shutil.which,
+    out: Callable[[str], None] = print,
+    load: ConfigLoader = load_config,
+) -> int:
     """Print a report and return the process exit code (0 when all required checks pass)."""
-    checks = collect_checks(which)
+    checks = collect_checks(which, load)
     for check in checks:
         status = "ok" if check.ok else ("FAIL" if check.required else "warn")
         out(f"[{status:>4}] {check.name}: {check.detail}")

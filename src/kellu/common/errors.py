@@ -13,3 +13,7 @@ class ConfigError(KelluError):
 
 class SecurityError(KelluError):
     """A security invariant would be violated (unsafe path, wrong ownership, denied access)."""
+
+
+class SessionError(KelluError):
+    """A session log was used incorrectly (not started, already ended, bad entry kind)."""

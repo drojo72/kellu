@@ -161,14 +161,16 @@ El servidor LSP de Kellu ofrece solo **hover** y **completado**. Revisa la docum
 | `~/.local/state/kellu/` | Registros de sesión, historial (redactados, modo 0700) |
 | `~/.cache/kellu/` | Cachés |
 
-```yaml
-routing:
-  code:
-    primary: deepseek
-    backup: [openrouter]
-  general:
-    primary: google
-    backup: [deepseek, openrouter]
+La configuración es un único archivo TOML, `~/.config/kellu/config.toml`, combinado sobre los defaults empaquetados. Nunca contiene secretos (usa el keyring), los endpoints deben usar HTTPS (HTTP solo para localhost), las claves desconocidas son errores, y el archivo debe pertenecerte y no ser escribible por grupo ni otros. Revísala con `kellu config path` y `kellu config check`.
+
+```toml
+[routing.code]
+primary = "deepseek"
+backup = ["openrouter"]
+
+[routing.general]
+primary = "google"
+backup = ["deepseek", "openrouter"]
 ```
 
 ## Perfiles de hardware (objetivo de diseño)
@@ -181,8 +183,8 @@ routing:
 
 ## Hitos hacia 0.1.0
 
-- [ ] **M0** Repositorio, layout `src/`, `pyproject.toml`, rutas XDG, CI, tests, licencia, `SECURITY.md`
-- [ ] **M1** Configuración con defaults empaquetados, errores, logging, sesiones; sin efectos al importar
+- [x] **M0** Repositorio, layout `src/`, `pyproject.toml`, rutas XDG, CI, tests, licencia, `SECURITY.md`
+- [x] **M1** Configuración con defaults empaquetados, errores, logging, sesiones; sin efectos al importar
 - [ ] **M2** Proveedores: cliente compatible con OpenAI (streaming, herramientas), Google, router con timeouts y respaldo
 - [ ] **M3** `kellu keys` con niveles y migración, entorno depurado, deny globs, redacción v1, permisos por riesgo
 - [ ] **M4** Sandbox: interfaz, backend bubblewrap, políticas, `kellu doctor`, tests de escape
