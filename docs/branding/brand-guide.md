@@ -15,6 +15,8 @@ Selected working palette: gold/copper Option A, with the requested deep navy.
 | Copper | `#C07852` | `192, 120, 82` | Warm accent |
 | Ivory | `#F4F0E7` | `244, 240, 231` | Optional light neutral |
 
+![Colour Palette for kellu](images/kellu_colour-palette.png)
+
 Check the actual SVG on white, ivory and navy before treating the palette as release-final. Gold and copper must remain distinguishable at actual display size, especially in the small terminal diamonds.
 
 ## Logo variants

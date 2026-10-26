@@ -3,7 +3,7 @@
 [English](README.md) · [Español](README.es.md)
 
 <div style="background-color: #091C2D; padding: 25 px; text-align: center; border-radius: 8px;">
-  <img src="/assets/branding/svg/kellu-logotipo.svg" alt= "Kellu Logotype" width="160" />
+  <img src="/assets/branding/svg/kellu-logo-color-dark.svg" alt= "Kellu Logotype" width="160" />
 </div>
 
 **Asistente de IA seguro y modular para el editor Kate, que piensa antes de gastar tokens.**

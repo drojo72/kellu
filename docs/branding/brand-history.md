@@ -32,7 +32,7 @@ Repeated geometric units can inspire a visual system extensible to KELLU and fut
 
 ## 2. Initial playful concept
 
-![Colour palette for isotype](images/kellu_color_palette.png)
+![Final concept from interaction with ChatGPT](isotype-chatgpt-final-proposition.png)
 
 ChatGPT produced a playful prototype during concept exploration, condensing the emerging visual idea into a logo-like composition. This stage should be presented as an exploratory proposal, not the final vector master.
 
