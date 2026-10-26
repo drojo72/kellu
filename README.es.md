@@ -2,6 +2,10 @@
 
 [English](README.md) · [Español](README.es.md)
 
+<div style="background-color: #091C2D; padding: 25 px; text-align: center; border-radius: 8px;">
+  <img src="/assets/branding/svg/kellu-logotipo.svg" alt= "Kellu Logotype" width="160" />
+</div>
+
 **Asistente de IA seguro y modular para el editor Kate, que piensa antes de gastar tokens.**
 
 > **Estado: pre-0.1.0.** Se reconstruye desde cero con diseño de seguridad primero. Existe un prototipo anterior que se porta módulo por módulo. Las APIs, comandos y configuración cambiarán. Aún no se puede instalar desde PyPI. Modelo de seguridad: ver [SECURITY.md](SECURITY.md).
@@ -204,6 +208,18 @@ La interoperabilidad es una meta, no una integración existente. No se implica r
 ## Sobre el nombre
 
 *Kellu* significa "ayudante" en mapudungun, la lengua del pueblo mapuche. El nombre refleja el propósito del proyecto: un asistente que ayuda, en silencio, dentro de las herramientas que ya usas.
+
+# KELLU — Branding documentation
+
+Estructura de documentación y assets para identidad visual de KELLU.
+
+- [Brand guide](docs/branding/brand-guide.md)
+- [Brand history and cultural inspiration](docs/branding/brand-history.md)
+- [Isotype construction](docs/branding/isotype-construction.md)
+- [Typography and licensing](docs/branding/typography.md)
+- [Terminal mockup](docs/branding/terminal-mockup.md)
+
+En SVG se encuentran los master de los logos. PNG icons son expotraciones derivadas para compatibilidad. Logo y wordmarks se mantienen convertidos a paths, se mantiene originales solo local.
 
 ## Contribuciones
 
