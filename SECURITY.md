@@ -150,7 +150,7 @@ Limits you should know:
 |---|---|
 | M0 | This document, `.gitignore` for secrets, CI with `pip-audit` |
 | M1 (done) | No side effects on import; private state directories (0700) and files (0600) opened without following symlinks; strict, secret-free TOML configuration; redacting, rotating logs; session logs that sanitize control characters and cannot forge structure |
-| M2 | Provider timeouts and fallback; schema validation of provider responses; keys passed by header, never in URLs |
+| M2 (done) | Endpoints must be https (http only for localhost) and are rechecked by the transport; redirects are refused so keys are never replayed to another host; response, line and stream-duration limits; keys travel only in headers, are validated against header injection and scrubbed from every error message; provider responses and tool calls are validated (names, JSON arguments, counts); a stream fails over only before any text was delivered; per-provider timeouts and a total time budget |
 | M3 | Keyring vault with tiers, migration, scrubbed environment, deny globs, redaction v1, risk-based permissions, scope and `Grant`, append-only audit log |
 | M4 | Sandbox backend, mounts derived from the `Grant`, staging copy, resource limits, `kellu doctor` (including the bubblewrap version warning), escape tests |
 | M5 | Tool registry requiring a declared risk level; proposal contract and host-side apply of approved hunks; host-side git and `gh` writes with confirmation |

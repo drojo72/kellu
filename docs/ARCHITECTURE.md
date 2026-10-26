@@ -10,10 +10,10 @@ and the dependency rule that tests enforce (`tests/unit/test_architecture.py`).
 | `common` | Errors, XDG paths, tiny shared utilities. Standard library only. | nothing |
 | `security` | Vault, redaction, deny globs, permissions and policy. | `common` |
 | `sandbox` | Sandbox interface, bubblewrap backend, profiles. | `common` |
-| `providers` | Model provider clients (receive their configuration; never read it). | `common` |
+| `providers` | Model provider clients (`OpenAICompatProvider`, `GoogleProvider`), HTTP transport, provider-neutral types. They receive their configuration and a key lookup; they never read either themselves. | `common` |
 | `projects` | Project discovery, stack detection, scopes. | `common` |
 | `tools` | Tool registry with schemas and mandatory risk levels; file, shell, git tools. | `common`, `security`, `sandbox` |
-| `core` | Config, router, context, sessions, persona, (later) cascade and agent loop. | all layers above |
+| `core` | Config, router (task classification, fallback chains, time budget), logging, sessions, (later) cascade and agent loop. | all layers above |
 | `frontends` | Terminal REPL, Kate LSP, (later) gateway, ACP, MCP server. | all layers above and `core` |
 | `cli.py`, `doctor.py` | Entry points. | everything |
 

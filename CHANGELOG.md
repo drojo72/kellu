@@ -13,6 +13,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 - M1: strict TOML configuration with packaged defaults (`kellu config path|check`), private
   rotating logs with redaction hook, append-only session logs, private-file helpers.
 - `kellu doctor` now validates the configuration.
+- M2: provider layer (OpenAI-compatible client with streaming and tool calls, Google client for
+  Gemini and Gemma, hardened HTTP transport) and the router with fallback chains, per-task
+  classification and a total time budget. `kellu config show`.
+- Default providers: OpenRouter, DeepSeek, Google (`gemini-flash-latest`), `gemma_direct`
+  (Gemma 4 with its own key) and xAI Grok. Google endpoint moved to `v1beta`.
 
 - Design notes: permissions and sandbox (`docs/design/permissions-and-sandbox.md`) and what Kellu can do through Kate's LSP client (`docs/design/lsp-capabilities.md`).
 

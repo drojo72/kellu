@@ -17,17 +17,34 @@ model = "deepseek-chat"
 timeout_s = 60
 keyring_name = "deepseek"
 
+# Gemini. `gemini-flash-latest` is a Google-maintained alias, so the default keeps working when
+# a specific version is retired. Pin an exact model id in config.toml if you need reproducibility.
 [providers.google]
 kind = "google"
-# TODO(M2): verify v1 versus v1beta for the selected model before relying on this default.
-base_url = "https://generativelanguage.googleapis.com/v1"
-model = "gemma-4-26b-a4b-it"
+base_url = "https://generativelanguage.googleapis.com/v1beta"
+model = "gemini-flash-latest"
 timeout_s = 60
 keyring_name = "google"
 
+# Gemma 4, served directly by the Gemini API with its own key and quota.
+[providers.gemma_direct]
+kind = "google"
+base_url = "https://generativelanguage.googleapis.com/v1beta"
+model = "gemma-4-26b-a4b-it"
+timeout_s = 60
+keyring_name = "gemma_direct"
+
+# xAI Grok. Model ids change quickly: check the provider's model list and override here.
+[providers.grok]
+kind = "openai_compat"
+base_url = "https://api.x.ai/v1"
+model = "grok-4.3"
+timeout_s = 60
+keyring_name = "grok"
+
 [routing.general]
-primary = "google"
-backup = ["deepseek", "openrouter"]
+primary = "gemma_direct"
+backup = ["google", "deepseek", "openrouter"]
 
 [routing.code]
 primary = "deepseek"
@@ -36,6 +53,9 @@ backup = ["openrouter"]
 [routing.explain]
 primary = "google"
 backup = ["openrouter"]
+
+[router]
+total_timeout_s = 120
 
 [logging]
 level = "INFO"

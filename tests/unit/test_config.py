@@ -22,8 +22,13 @@ def _parse(user: dict[str, Any]) -> cfg.Config:
 
 def test_packaged_defaults_are_valid() -> None:
     config = cfg.parse_config(cfg.load_defaults())
-    assert set(config.providers) == {"openrouter", "deepseek", "google"}
+    assert set(config.providers) == {"openrouter", "deepseek", "google", "gemma_direct", "grok"}
+    assert config.providers["google"].model == "gemini-flash-latest"
+    assert config.providers["gemma_direct"].model.startswith("gemma")
+    assert config.providers["gemma_direct"].keyring_name == "gemma_direct"
     assert config.route("code").chain == ("deepseek", "openrouter")
+    assert config.route("general").chain[0] == "gemma_direct"
+    assert config.router.total_timeout_s == 120.0
     assert config.logging.level == "INFO"
     assert config.sessions.enabled is True
 
@@ -151,3 +156,20 @@ def test_config_is_immutable() -> None:
     config = cfg.parse_config(cfg.load_defaults())
     with pytest.raises(TypeError):
         config.providers["x"] = config.providers["google"]  # type: ignore[index]
+
+
+@pytest.mark.parametrize("value", [0, 4, 901, "60", True])
+def test_router_total_timeout_is_validated(value: object) -> None:
+    with pytest.raises(ConfigError, match="total_timeout_s"):
+        _parse({"router": {"total_timeout_s": value}})
+
+
+def test_router_unknown_key_is_rejected() -> None:
+    with pytest.raises(ConfigError, match="unknown key"):
+        _parse({"router": {"retries": 3}})
+
+
+def test_provider_kinds_match_the_registry() -> None:
+    from kellu.providers.registry import KINDS
+
+    assert cfg.PROVIDER_KINDS == KINDS

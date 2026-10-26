@@ -66,3 +66,13 @@ def test_config_check_reports_a_rejected_secret(
     user.chmod(0o600)
     assert main(["config", "check"]) == EXIT_ERROR
     assert "keyring" in capsys.readouterr().err
+
+
+def test_config_show_lists_providers_and_routes_without_secrets(
+    fake_home: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["config", "show"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "gemma_direct" in out and "gemini-flash-latest" in out
+    assert "ai_grok_api_key" in out  # the entry name, never a value
+    assert "general" in out and "gemma_direct -> google -> deepseek -> openrouter" in out

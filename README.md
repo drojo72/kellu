@@ -26,7 +26,7 @@ Kellu brings AI assistance to [Kate](https://kate-editor.org/) without a heavy g
 
 | Version | Focus | Content |
 |---|---|---|
-| **0.1.0** | Secure base | Modular core, unified providers (OpenAI-compatible, Google), keyring vault with tiers, redaction and deny globs, risk-based permissions, **sandbox** (bubblewrap), tools (files, sandboxed shell, git), terminal REPL, LSP for Kate (hover and completion), `kellu doctor` |
+| **0.1.0** | Secure base | Modular core, unified providers (OpenAI-compatible, Gemini and Gemma through Google; OpenRouter, DeepSeek and xAI Grok out of the box), keyring vault with tiers, redaction and deny globs, risk-based permissions, **sandbox** (bubblewrap), tools (files, sandboxed shell, git), terminal REPL, LSP for Kate (hover and completion), `kellu doctor` |
 | **0.2.0** | Agent | Agent loop with tools and confirmations, cascade rules stage, context injection, LSP diagnostics and quick-fix suggestions |
 | **0.3.0** | Interoperability | Local OpenAI-compatible gateway, ACP agent mode |
 | **0.4.0** | Memory | Store of accepted solutions (SQLite by default, PostgreSQL + pgvector optional), memory stage |
@@ -185,7 +185,7 @@ backup = ["deepseek", "openrouter"]
 
 - [x] **M0** Repository, `src/` layout, `pyproject.toml`, XDG paths, CI, tests, license, `SECURITY.md`
 - [x] **M1** Config with packaged defaults, errors, logging, sessions; no side effects on import
-- [ ] **M2** Providers: OpenAI-compatible client (streaming, tools), Google, router with timeouts and fallback
+- [x] **M2** Providers: OpenAI-compatible client (streaming, tools), Google, router with timeouts and fallback
 - [ ] **M3** `kellu keys` with tiers and migration, scrubbed environment, deny globs, redaction v1, risk-based permissions
 - [ ] **M4** Sandbox: interface, bubblewrap backend, policies, `kellu doctor`, escape tests
 - [ ] **M5** Tools with generated schemas and risk levels: files, sandboxed shell, read-only git; git/gh writes on host with confirmation

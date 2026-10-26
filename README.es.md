@@ -26,7 +26,7 @@ Kellu lleva asistencia de IA a [Kate](https://kate-editor.org/) sin una pila gr�
 
 | Versión | Enfoque | Contenido |
 |---|---|---|
-| **0.1.0** | Base segura | Núcleo modular, proveedores unificados (compatible con OpenAI, Google), vault de keyring con niveles, redacción y deny globs, permisos por riesgo, **sandbox** (bubblewrap), herramientas (archivos, shell en sandbox, git), REPL en terminal, LSP para Kate (hover y completado), `kellu doctor` |
+| **0.1.0** | Base segura | Núcleo modular, proveedores unificados (compatible con OpenAI; Gemini y Gemma vía Google; OpenRouter, DeepSeek y xAI Grok incluidos), vault de keyring con niveles, redacción y deny globs, permisos por riesgo, **sandbox** (bubblewrap), herramientas (archivos, shell en sandbox, git), REPL en terminal, LSP para Kate (hover y completado), `kellu doctor` |
 | **0.2.0** | Agente | Loop de agente con herramientas y confirmaciones, etapa de reglas de la cascada, inyección de contexto, diagnósticos LSP y sugerencias de corrección rápida |
 | **0.3.0** | Interoperabilidad | Gateway local compatible con OpenAI, modo agente ACP |
 | **0.4.0** | Memoria | Almacén de soluciones aceptadas (SQLite por defecto, PostgreSQL + pgvector opcional), etapa de memoria |
@@ -185,7 +185,7 @@ backup = ["deepseek", "openrouter"]
 
 - [x] **M0** Repositorio, layout `src/`, `pyproject.toml`, rutas XDG, CI, tests, licencia, `SECURITY.md`
 - [x] **M1** Configuración con defaults empaquetados, errores, logging, sesiones; sin efectos al importar
-- [ ] **M2** Proveedores: cliente compatible con OpenAI (streaming, herramientas), Google, router con timeouts y respaldo
+- [x] **M2** Proveedores: cliente compatible con OpenAI (streaming, herramientas), Google, router con timeouts y respaldo
 - [ ] **M3** `kellu keys` con niveles y migración, entorno depurado, deny globs, redacción v1, permisos por riesgo
 - [ ] **M4** Sandbox: interfaz, backend bubblewrap, políticas, `kellu doctor`, tests de escape
 - [ ] **M5** Herramientas con esquemas generados y niveles de riesgo: archivos, shell en sandbox, git de solo lectura; escrituras de git y gh en el host con confirmación

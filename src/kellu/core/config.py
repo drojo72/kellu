@@ -23,19 +23,19 @@ from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
-from urllib.parse import urlsplit
 
 from kellu.common import paths
 from kellu.common.errors import ConfigError, SecurityError
+from kellu.common.net import endpoint_problem
+from kellu.providers.registry import KINDS as PROVIDER_KINDS
+from kellu.providers.types import ProviderConfig
 
 CONFIG_FILENAME = "config.toml"
 MAX_CONFIG_BYTES = 256 * 1024
 FALLBACK_ROUTE = "general"
-PROVIDER_KINDS = frozenset({"openai_compat", "google"})
 LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR"})
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
-_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 _SECRET_KEYS = frozenset(
     {"api_key", "apikey", "token", "secret", "password", "passwd", "authorization", "bearer"}
 )
@@ -43,23 +43,12 @@ _SECRET_SUFFIXES = ("_api_key", "_apikey", "_token", "_secret", "_password")
 _NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
 
-_TOP_KEYS = frozenset({"providers", "routing", "logging", "sessions"})
+_TOP_KEYS = frozenset({"providers", "routing", "router", "logging", "sessions"})
 _PROVIDER_KEYS = frozenset({"kind", "base_url", "model", "timeout_s", "keyring_name"})
 _ROUTE_KEYS = frozenset({"primary", "backup"})
+_ROUTER_KEYS = frozenset({"total_timeout_s"})
 _LOGGING_KEYS = frozenset({"level", "max_bytes", "backups"})
 _SESSIONS_KEYS = frozenset({"enabled", "max_entry_chars"})
-
-
-@dataclass(frozen=True)
-class ProviderConfig:
-    """One model provider. ``keyring_name`` names a keyring entry, never the secret itself."""
-
-    name: str
-    kind: str
-    base_url: str
-    model: str
-    timeout_s: float
-    keyring_name: str | None
 
 
 @dataclass(frozen=True)
@@ -73,6 +62,13 @@ class Route:
     def chain(self) -> tuple[str, ...]:
         """Providers to try, in order."""
         return (self.primary, *self.backup)
+
+
+@dataclass(frozen=True)
+class RouterConfig:
+    """Limits for the provider router."""
+
+    total_timeout_s: float
 
 
 @dataclass(frozen=True)
@@ -98,6 +94,7 @@ class Config:
 
     providers: Mapping[str, ProviderConfig]
     routing: Mapping[str, Route]
+    router: RouterConfig
     logging: LoggingConfig
     sessions: SessionsConfig
     source: Path | None = None  # the user file that was applied, if any
@@ -170,13 +167,9 @@ def _get_name(value: object, where: str) -> str:
 
 
 def _validate_base_url(url: str, where: str) -> str:
-    parts = urlsplit(url)
-    if parts.scheme not in {"https", "http"} or not parts.hostname:
-        raise ConfigError(f"{where}.base_url: expected an absolute http(s) URL")
-    if parts.username or parts.password:
-        raise ConfigError(f"{where}.base_url: credentials in URLs are not allowed")
-    if parts.scheme == "http" and parts.hostname not in _LOCAL_HOSTS:
-        raise ConfigError(f"{where}.base_url: plain http is only allowed for localhost; use https")
+    problem = endpoint_problem(url)
+    if problem is not None:
+        raise ConfigError(f"{where}.base_url: {problem}")
     return url.rstrip("/")
 
 
@@ -242,6 +235,13 @@ def parse_config(
     if FALLBACK_ROUTE not in routing:
         raise ConfigError(f"routing.{FALLBACK_ROUTE}: the fallback route is required")
 
+    router_table = _as_table(merged.get("router", {}), "router")
+    _check_keys(router_table, _ROUTER_KEYS, "router")
+    total = router_table.get("total_timeout_s")
+    if isinstance(total, bool) or not isinstance(total, int | float) or not 5 <= total <= 900:
+        raise ConfigError("router.total_timeout_s: expected a number between 5 and 900")
+    router_cfg = RouterConfig(total_timeout_s=float(total))
+
     log_table = _as_table(merged.get("logging", {}), "logging")
     _check_keys(log_table, _LOGGING_KEYS, "logging")
     level = _get_str(log_table, "level", "logging").upper()
@@ -266,6 +266,7 @@ def parse_config(
     return Config(
         providers=MappingProxyType(providers),
         routing=MappingProxyType(routing),
+        router=router_cfg,
         logging=logging_cfg,
         sessions=sessions_cfg,
         source=source,

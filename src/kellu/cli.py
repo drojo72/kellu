@@ -36,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_sub = config.add_subparsers(dest="action", metavar="<action>", required=True)
     config_sub.add_parser("path", help="print the user configuration file location")
     config_sub.add_parser("check", help="validate the effective configuration")
+    config_sub.add_parser("show", help="show providers and routes (never secrets)")
     for name, milestone in _PLANNED.items():
         sub.add_parser(name, help=f"(planned for {milestone})")
     return parser
@@ -60,6 +61,23 @@ def _config_check() -> int:
     return EXIT_OK
 
 
+def _config_show() -> int:
+    try:
+        config = load_config()
+    except KelluError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    print("providers:")
+    for name, provider in sorted(config.providers.items()):
+        key = f"keyring: ai_{provider.keyring_name}_api_key" if provider.keyring_name else "no key"
+        print(f"  {name:<13} {provider.kind:<14} {provider.model}  {provider.base_url}  ({key})")
+    print("routes:")
+    for task, route in sorted(config.routing.items()):
+        print(f"  {task:<13} {' -> '.join(route.chain)}")
+    print(f"router: total time budget {config.router.total_timeout_s:g}s")
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the CLI and return the process exit code."""
     parser = build_parser()
@@ -73,7 +91,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if command == "doctor":
         return doctor.run()
     if command == "config":
-        return _config_path() if args.action == "path" else _config_check()
+        if args.action == "path":
+            return _config_path()
+        return _config_show() if args.action == "show" else _config_check()
     milestone = _PLANNED.get(command)
     if milestone is None:  # pragma: no cover - argparse rejects unknown commands first
         parser.error(f"unknown command: {command}")
