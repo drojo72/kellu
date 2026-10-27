@@ -1,72 +1,157 @@
-# Architecture
+<div align="center">
+  <img src="/assets/branding/svg/kellu-logo-color-dark.svg" alt="Kellu Logo" width="350" />
+  <p><em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em></p>
+</div>
 
-Kellu is a small headless core with replaceable adapters. This document defines the layers
-and the dependency rule that tests enforce (`tests/unit/test_architecture.py`).
+---
 
-## Layers (0.1.0)
+# Architecture & System Design
 
-| Layer | Responsibility | May import |
-|---|---|---|
-| `common` | Errors, XDG paths, tiny shared utilities. Standard library only. | nothing |
-| `security` | Vault, redaction, deny globs, permissions and policy. | `common` |
-| `sandbox` | Sandbox interface, bubblewrap backend, profiles. | `common` |
-| `providers` | Model provider clients (`OpenAICompatProvider`, `GoogleProvider`), HTTP transport, provider-neutral types. They receive their configuration and a key lookup; they never read either themselves. | `common` |
-| `projects` | Project discovery, stack detection, scopes. | `common` |
-| `tools` | Tool registry with schemas and mandatory risk levels; file, shell, git tools. | `common`, `security`, `sandbox` |
-| `core` | Config, router (task classification, fallback chains, time budget), logging, sessions, (later) cascade and agent loop. | all layers above |
-| `frontends` | Terminal REPL, Kate LSP, (later) gateway, ACP, MCP server. | all layers above and `core` |
-| `cli.py`, `doctor.py` | Entry points. | everything |
+This document details the software architecture, design principles, layer hierarchy, and security boundaries for **Kellu**. 
 
+---
+
+## 1. Architectural Overview & Design Principles
+
+Kellu is designed as a **local-first, modular AI assistant and Language Server Protocol (LSP) tool**. The architecture prioritizes system safety, local execution, explicit dependencies, and modular extensibility.
+
+### Core Principles
+- **Local-First Security**: Secrets and states reside exclusively within local operating system constructs (e.g., Linux Secret Service via `secret-tool`). No credentials are logged or written to plain text files.
+- **Strict Layered Isolation**: Dependencies flow strictly downward in a Directed Acyclic Graph (DAG). High-level orchestrators may depend on lower-level utilities, but lower layers never reference upper layers.
+- **Polyglot Hybrid Model**: High-level orchestration, CLI parsing, and workflow logic are handled in **Ruby** for expressiveness and rapid iteration. Performance-critical, low-latency, or heavy text parsing operations are delegated to compiled **Rust extensions** (`ext/`).
+- **Sandboxed Execution**: External tools and agentic commands run under strict sandbox policies to prevent arbitrary side-effects on the host system.
+
+---
+
+## 2. Layered Architecture (Ruby Core)
+
+The Ruby codebase under `lib/kellu/` is structured into well-defined functional layers. Higher layers can call into equal or lower layers, but lower layers must remain completely unaware of higher layers.
+
+```text
++---------------------------------------------------------------+
+|                      Frontends Layer                          |
+|         (bin/kellu, CLI / Thor, LSP Server, REPL)             |
++---------------------------------------------------------------+
+                               |
+                               v
++---------------------------------------------------------------+
+|                         Core Layer                            |
+|        (Config Engine, System Prompts, Router, State)         |
++---------------------------------------------------------------+
+               |                 |                 |
+               v                 v                 v
++-----------------------+ +-------------+ +---------------------+
+|    Projects Layer     | | Tools Layer | |   Providers Layer   |
+| (Workspace, Indexing) | | (Executors) | | (DeepSeek, Open3) |
++-----------------------+ +-------------+ +---------------------+
+               |                 |                 |
+               +-----------------+-----------------+
+                               |
+                               v
++---------------------------------------------------------------+
+|                       Sandbox Layer                           |
+|               (Process Isolation, Policy Gate)                |
++---------------------------------------------------------------+
+                               |
+                               v
++---------------------------------------------------------------+
+|                      Security Layer                           |
+|        (Keyring Manager, Open3 Secret-Tool Wrapper)          |
++---------------------------------------------------------------+
+                               |
+                               v
++---------------------------------------------------------------+
+|                       Common Layer                            |
+|             (Custom Errors, Utilities, Logger)               |
++---------------------------------------------------------------+
 ```
-frontends -> core -> tools -> sandbox, security -> common
-                \-> providers -> common
-                \-> projects  -> common
+
+### Layer Breakdown
+
+1. **`Frontends` (`lib/kellu/cli.rb`, future `lib/kellu/lsp/`)**
+   - **Role**: Entry points for human users or editor interfaces (VS Code, Neovim, Kate).
+   - **Responsibilities**: Command parsing (Thor), output formatting, signals handling, and translation between external user requests and `Core` operations.
+
+2. **`Core` (`lib/kellu/core/`)**
+   - **Role**: Brain and orchestrator of the system.
+   - **Responsibilities**: Application lifecycle, TOML configuration parsing (`config.rb`), request routing (`router.rb`), prompt template loading, and state orchestration.
+
+3. **`Projects` (`lib/kellu/projects/`)**
+   - **Role**: Context and workspace manager.
+   - **Responsibilities**: Codebase structural analysis, local file indexing, context retrieval, and repository-level awareness.
+
+4. **`Tools` (`lib/kellu/tools/`)**
+   - **Role**: Agentic tool definitions and capability implementations.
+   - **Responsibilities**: Execution routines for code execution, file modification, terminal commands, and API inspection.
+
+5. **`Providers` (`lib/kellu/providers/`)**
+   - **Role**: AI provider adapters.
+   - **Responsibilities**: Standardizing external vendor APIs (DeepSeek, OpenRouter, Google AI, Local LLMs) into a unified internal message format.
+
+6. **`Sandbox` (`lib/kellu/sandbox/`)**
+   - **Role**: Safe execution context.
+   - **Responsibilities**: Enforcing execution boundaries, environment restrictions, and policy checks before `Tools` or commands execute system-level processes.
+
+7. **`Security` (`lib/kellu/security/`)**
+   - **Role**: Secret management wrapper (`keyring_manager.rb`).
+   - **Responsibilities**: Communicating safely with `secret-tool` via `Open3`, isolating tokens in-memory, and guarding against leaking API keys into logs or stack traces.
+
+8. **`Common` (`lib/kellu/error.rb`, `lib/kellu/version.rb`)**
+   - **Role**: Shared fundamental primitives.
+   - **Responsibilities**: Base custom exception hierarchy (`Kellu::Error`), logging abstractions, and global constants.
+
+---
+
+## 3. Dependency & Import Rules
+
+To prevent coupling and cyclic dependencies, Kellu strictly enforces the following dependency rules:
+
+1. **Downward Flow Only**: Module imports (`require_relative`) must only point to equal or lower-level components.
+2. **No Upward References**: Lower layers (e.g., `Security`, `Common`) must **never** reference `Core`, `CLI`, or `Providers`.
+3. **Provider Isolation**: Adapters inside `lib/kellu/providers/` must be decoupled from each other. They interact solely via standardized interfaces provided by `Core` or `Common`.
+4. **Error Bubble Up**: Exceptions generated in lower layers must inherit from `Kellu::Error` (defined in `Common`) and bubble upward cleanly to be caught by `Frontends` / `CLI`.
+
+---
+
+## 4. Native Rust Extensions (`ext/`)
+
+For operations where Ruby's execution speed or GIL limits system throughput, native Rust extensions are introduced under `ext/kellu_native/`.
+
+### Use Cases for Rust Extensions
+- **High-Speed Tokenization & Parsing**: Processing large dynamic context windows and codebases for the LSP server.
+- **Diff & Vector Computation**: Fast local similarity search and structural diffing.
+- **Protocol Serialization**: Fast JSON-RPC parsing for high-throughput LSP communication.
+
+### FFI / C-Extension Boundary
+- **Magnus / rb-sys**: Used as the bridge between Ruby C-API and Rust.
+- **Safety Guarantee**: Memory allocations within Rust extensions remain isolated; invalid Rust memory operations panic safely at the extension boundary rather than causing unhandled segfaults in the Ruby process.
+
+---
+
+## 5. Trust Boundaries & Security Model
+
+```text
+[ UNTRUSTED ZONE ] ──────────> [ CONTROLLED ZONE ] ──────────> [ TRUSTED LOCAL ZONE ]
+ External AI API           Kellu Provider Adapters         Linux Secret Service
+ (DeepSeek, OpenRouter)    & Input Sanitizers              (secret-tool / Keyring)
+         │                         │                                 │
+         └───────── Strict ────────┴────────── In-Memory ────────────┘
+                    TLS Encryption             Open3 Stream
 ```
 
-Rules:
+1. **System Credentials Boundary**:
+   - Secrets are fetched on demand from `secret-tool` into Ruby memory.
+   - Keys are never persisted to disk (`.env`, config TOML, or temporary files are strictly forbidden from storing plain text keys).
+2. **External Data Boundary**:
+   - Responses received from external LLMs are treated as **untrusted data**.
+   - Model-generated commands must pass through the `Sandbox` policy engine before execution.
+3. **Execution Boundary**:
+   - Tool execution is explicit. Destructive commands require user authorization or strict sandboxing.
 
-1. Dependencies only point downward. A lower layer never imports a higher one.
-2. Imports inside the package are **absolute** (`from kellu.common import paths`).
-3. Importing a module has **no side effects** (no directories, no network, no registry writes).
-4. Third-party packages are imported only by the layer that needs them, and heavy ones are
-   optional extras (`[tui]`, `[local]`).
-5. A package is created **when its milestone starts**. Empty packages for future features are
-   not allowed; the architecture test fails on any directory that is not a declared layer.
+---
 
-## Where future features go
+## 6. Future Component Integration Roadmap
 
-| Feature | Version | Placement |
-|---|---|---|
-| Decision cascade (rules, memory, LLM) | 0.2.0 to 0.4.0 | `core/cascade.py` |
-| Agent loop | 0.2.0 | `core/agent.py` |
-| OpenAI-compatible gateway, ACP agent mode | 0.3.0 | `frontends/gateway.py`, `frontends/acp.py` |
-| Memory store (SQLite, optional pgvector) | 0.4.0 | new lower layer `memory/` (imports `common`) |
-| MCP server | 0.5.0 | `frontends/mcp_server.py` |
-| MCP client (agents and external tools) | 0.5.0 | `tools/mcp_client.py` |
-| Local runtime detection | 0.5.0 | `providers/local.py` |
-| Scope and grants | M3 | `security/scope.py`, `security/grants.py` |
-| Append-only audit log | M3 | `security/audit.py` |
-| Sandbox mounts derived from a grant, staging copy | M4 | `sandbox/policy.py`, `sandbox/staging.py` |
-| Proposal contract and host-side apply | M5 | `tools/proposal.py`, `tools/apply.py` |
-| Kate LSP server (hover, completion; later diagnostics, code actions) | M6, 0.2.0 | `frontends/lsp/` |
-
-Protocol adapters (ACP, MCP, gateway) are **frontends** or **tools**, never top-level packages.
-
-## Extensions (agents and MCP servers)
-
-Agents such as a crawler or an OCR service, and any MCP server, are **untrusted extensions**.
-They are reached through one generic client, run as sandboxed processes with a scrubbed
-environment, are enabled by an explicit per-server allowlist, and every tool they expose needs
-a declared risk level. The core contains no per-agent code.
-
-## Trust boundary
-
-The core is trusted: it holds keys and network access and enforces policy. Process-spawning
-tools and extensions run in the sandbox and are untrusted. Model output, repository content and
-web content are untrusted data. See [SECURITY.md](../SECURITY.md) and the design notes in [docs/design/](design/).
-
-## Adding a module
-
-1. Pick the lowest layer that can host it.
-2. Add tests first, including negative tests for anything security-relevant.
-3. Run `ruff check .`, `ruff format .`, `mypy` and `pytest`.
+- **LSP Server Component (`lib/kellu/lsp/`)**: Will attach to the `Frontends` layer, exposing Kellu capabilities directly to IDEs via stdio/sockets using JSON-RPC.
+- **Local SQLite / Vector Database (`lib/kellu/database/`)**: Will integrate between `Projects` and `Core` to cache local codebase embeddings and conversation histories securely.
+- **Rust Text Engine Integration**: Incremental substitution of bottleneck Ruby parsers with `ext/kellu_native` methods without changing public Ruby contracts.

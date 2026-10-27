@@ -1,169 +1,48 @@
-# Security Policy
+<div align="center">
+  <img src="/assets/branding/svg/kellu-logo-color-dark.svg" alt="Kellu Logo" width="350" />
+  <p><em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em></p>
+</div>
 
-Kellu is an AI assistant that can read your code, call external model providers and, in later versions, run tools on your machine. That makes security a design requirement, not a feature added afterwards. This document describes how to report problems, the threat model, the controls we build, and, honestly, what is not covered.
+---
 
-> **Status: pre-0.1.0.** The controls below are the **design** that 0.1.0 must meet. They are tracked as milestones (see [Security roadmap](#security-roadmap)). Until a control ships, treat it as not implemented.
+# Security Policy & Architecture
 
-## Reporting a vulnerability
+## Security Principles
 
-Please **do not open a public issue** for security problems.
+Kellu is designed around a zero-trust model for untrusted input, model responses, and third-party extensions. The core principles are:
 
-- Use GitHub's private vulnerability reporting (*Security → Report a vulnerability*) on this repository, or
-- email `<security-contact-address>`.
+1. **Zero Plaintext Credentials**: No API keys, passwords, or tokens are ever written to disk or embedded in plain text configuration files.
+2. **Keyring Isolation**: Credentials reside exclusively within the Linux Secret Service backend, accessible via `secret-tool` under the `org.freedesktop.Secret.Generic` schema.
+3. **Fail-Closed Execution**: Any permission failure, invalid scope attempt, or hash mismatch halts operations immediately.
+4. **Sandboxed Operations**: File operations and process executions triggered by AI tools or extensions run in restricted environments.
 
-Include the affected version or commit, steps to reproduce, the impact you expect, and whether you want credit. This is a small, maintained-by-one-person project: we aim to acknowledge reports within 7 days and to agree on a disclosure timeline with you. These are goals, not guarantees.
+---
 
-## Supported versions
+## Credential Storage (`KeyringManager`)
 
-| Version | Supported |
-|---|---|
-| `main` (pre-0.1.0) | Best effort |
-| 0.1.x and later | Latest minor release |
+- **Backend**: Linux XDG Secret Service DBus interface executed using Ruby's `Open3`.
+- **Attributes**: Schema matches `org.freedesktop.Secret.Generic` with `kai` / `kellu` service identifiers.
+- **Parsing**: Line-by-line block parsing (`[/N]`) guarantees accurate extraction by label without misinterpreting compound service names.
 
-## Threat model
+---
 
-### Assets
+## Scope & Path Restrictions
 
-- API keys and infrastructure secrets (cloud, DNS, databases, GitHub tokens).
-- Source code and private data in your projects.
-- Integrity of your machine and accounts.
-- Your consent: no destructive action without your explicit approval.
+- **Root Containment**: All file operations are bounded by the project root. Root directories like `/`, `$HOME`, or user ancestor paths are rejected.
+- **Automatic Denylist**: Access is strictly forbidden for system and sensitive files, including:
+  - Credentials and environment files: `.env*`, `*.pem`, `*.key`, `id_*`, `credentials*`, `*.token`.
+  - Version control internals: `.git/`.
+- **Resolution**: Path resolution uses directory descriptor operations (`O_NOFOLLOW`) to prevent symlink traversal attacks (e.g., CVE-2026-87766).
 
-### Trust boundaries
+---
 
-| Zone | Trust level |
-|---|---|
-| Kellu core (keys, network, policy) | Trusted |
-| Sandboxed tool processes | Untrusted execution |
-| Extensions (agents, MCP servers) | Untrusted execution and untrusted data |
-| Model providers | External: they see what you send them |
-| Repository, web and stored content | Untrusted **data**, never instructions |
-| The user | Trusted principal |
+## Sandbox & Execution Safety
 
-### Threats and controls
+- **Bubblewrap Aislamiento**: Process-spawning tools run isolated using `bubblewrap` with `--unshare-all`, cleared environments, read-only system mounts, and temporary file systems for `/tmp` and `$HOME`.
+- **Staging Copies**: Tools that request file writes perform actions on temporary staging copies. Changes are validated through explicit proposal diffs requiring human approval before applying to the repository.
 
-| # | Threat | Controls |
-|---|---|---|
-| T1 | **Prompt injection** through files, web pages or stored snippets | Content is treated as data. Privilege separation: the model proposes, the policy engine decides. Risk-based confirmation. Sandboxed execution. No secrets in model context. |
-| T2 | **Data egress**: secrets or private code sent to a provider | Deny globs (`.env`, keys, certificates), secret redaction (patterns plus entropy), reversible placeholders, per-project local-only mode, size limits on context. |
-| T3 | **Secret theft by tools** (reading `~/.ssh`, keyring, environment) | Sandbox with no access to home secrets or the keyring bus, environment allowlist, secrets never in argv, env or logs. |
-| T4 | **Destructive actions** (deleting a repository, force-push, mass edits) | Risk levels, typed confirmation for destructive tools, git and `gh` writes executed on the host by the core, never by a model-controlled process. |
-| T5 | **Path traversal and symlink escapes** in file tools | Paths resolved with `realpath` against a scope root, symlinks not followed outside it, deny globs, checks made on opened file descriptors where possible. |
-| T6 | **Malicious or compromised dependency** | Core on the standard library where practical, optional extras, pinned versions (hashes for releases), `pip-audit` in CI, minimal dependency changes reviewed. |
-| T7 | **Malicious or malformed provider response** (forged tool calls) | Tool calls validated against schema and policy before any execution. Model output is never executed directly. |
-| T8 | **Other local users or processes** | Secrets in the OS keyring. State directories created with mode `0700`, files `0600`. |
-| T9 | **Secrets leaking through logs and session history** | Redaction before writing, truncated content, no raw provider payloads by default. |
-| T10 | **Untrusted extensions** (agents and MCP servers: tool poisoning, malicious tool descriptions, exfiltration) | Run as sandboxed processes with a scrubbed environment. Explicit per-server allowlist. Tool descriptions and outputs are untrusted data. Every tool has a declared risk level. No access to `provider`, `infra` or `db` secrets unless granted per server. Network only through the `network` profile, with confirmation. |
-| T11 | **Configuration tampering** (redirecting provider endpoints to capture API keys, smuggling secrets into files) | TOML only, never code. Secret-looking keys are rejected. Endpoints must use HTTPS (plain HTTP only for localhost) and may not embed credentials. Unknown keys are errors. The user file must be a regular file, not a symlink, owned by the current user and not writable by group or others; it is opened without following symlinks and size-limited. |
-| T12 | **Untrusted editor-side input over LSP** (a root that is the home directory, repository-supplied configuration, open documents that contain secrets) | Roots equal to `$HOME`, an ancestor of it or `/` are rejected, and a project marker or explicit confirmation is required. Settings that arrive from `.kateproject` may only tighten policy, never relax deny globs, sandbox profile or endpoints. Deny globs apply to documents received over LSP, which are never forwarded to a provider. Edits are limited to a validated proposal, inside the scope, with document versions. |
+---
 
-### Out of scope
+## Reporting Vulnerabilities
 
-- A compromised operating system, kernel or root account, or physical access.
-- A malicious user acting with their own privileges.
-- Vulnerabilities inside the sandbox backend or the kernel itself (we configure bubblewrap correctly; we do not audit it).
-- How a provider stores or uses the data you choose to send it. Choose providers accordingly.
-- Cryptographic guarantees beyond the platform's. Kellu does not implement its own cryptography: transport security comes from the platform TLS stack, and secret storage from the OS keyring. Post-quantum protection therefore depends on those components and on your providers; we will track support rather than promise it.
-
-## Security principles
-
-1. **Fail closed.** If a protection cannot run, the capability it protects is disabled.
-2. **Least privilege.** Every component receives the minimum access it needs.
-3. **Defense in depth.** No single control (including the sandbox) is trusted alone.
-4. **Secure defaults.** The safe option is the default; relaxing it is explicit and per session.
-5. **Explicit consent.** Writing, deleting and network use are confirmed according to risk.
-6. **Transparency.** What leaves your machine, and what a tool is about to do, is visible before it happens.
-
-## Secrets management
-
-- Secrets live in the OS keyring (Secret Service on Linux). They are not stored in dotfiles or `.env` files.
-- Entries have one attribute named `kellu` whose value is `<service>_<key>` (for example `kellu=ai_openrouter_api_key`) and the label `KELLU: <name>`. It is the same shape the earlier prototype used, with a different attribute name, so existing entries and shell habits keep working (`secret-tool lookup kellu ai_openrouter_api_key`).
-- **Tiers are not stored in the keyring.** Kellu derives them from the entry name: prefix `ai_` is `provider`; `github_`, `cloudflare_`, `render_`, `desec_` and `duckdns_` are `infra`; `neon_`, `supabase_` and `mysql_` are `db`. A name that matches nothing defaults to `infra`, so unknown secrets fail closed. Users can override the mapping in `config.toml`.
-- A provider's `keyring_name` in the configuration maps to the entry `ai_<keyring_name>_api_key`.
-
-| Tier | Examples | Availability |
-|---|---|---|
-| `provider` | model provider API keys | Used by the core in the normal flow |
-| `infra` | cloud, DNS, deployment tokens | Not reachable by the assistant unless explicitly enabled, with confirmation |
-| `db` | database passwords and admin keys | Same as `infra` |
-
-- Secrets are never placed in the model context, in command-line arguments (visible in `/proc`), in the environment of sandboxed processes, or in logs.
-- `kellu keys migrate` copies entries from the earlier prototype's attribute (`kai`) to `kellu` for anyone who has not done it by hand. It never deletes the originals; removal is a separate, confirmed step. `--dry-run` shows names only, never values.
-- Use **least-privilege, expiring tokens**. Prefer fine-grained GitHub tokens without `delete_repo`, and rotate keys that were ever pasted into a terminal or chat.
-
-## Tool risk levels
-
-| Level | Examples | Default policy |
-|---|---|---|
-| `read` | list, read, search, `git status`, `git log` | Automatic, inside the sandbox or path policy |
-| `write` | edit a file, `git commit` | Confirmation (configurable per scope) |
-| `network` | install packages, fetch URLs | Confirmation, and only with the `network` sandbox profile |
-| `destructive` | delete files or branches, force-push, repository deletion | Typed confirmation; never automatic |
-
-Every tool declares its level in its registration. A tool without a declared level cannot run.
-
-## Authorization model
-
-Full design: [docs/design/permissions-and-sandbox.md](docs/design/permissions-and-sandbox.md).
-
-- **Reading** is granted per project, as read-only, when you open it. A scope root equal to your home directory, an ancestor of it or `/` is refused.
-- **Writing is never a standing permission.** The model proposes changes as data (diffs with hashes); you choose **deny**, **partial** (selected hunks) or **full** (all valid items of that proposal); only the core applies them, after rechecking hashes and scope. If any check fails, nothing is applied.
-- **The real project is never writable from a sandbox.** Tools that need to write run on a staging copy and their result comes back as another proposal.
-- One `Grant` object derives both the path policy and the sandbox mounts, and a test asserts they match.
-- Every proposal, decision and application is recorded in an append-only audit log (mode 0600, hash-chained).
-
-## Sandbox
-
-Process-spawning tools (shell, tests, formatters) run inside **bubblewrap** on Linux.
-
-- **Defaults:** no network, read-only system, the project directory as the only writable path, ephemeral `/tmp`, scrubbed environment, `--die-with-parent`, new session.
-- **Not exposed:** `~/.ssh`, `~/.gnupg`, the keyring bus, other home directories.
-- **Profiles:** `read-only`, `workspace-write`, `network` (requires confirmation), and `unsafe` (explicit, per session, always logged).
-- **Fail closed:** if no backend is available, the shell tool is disabled. `kellu doctor` reports why.
-- **Project virtual environments** are mounted read-only by default, so a poisoned package cannot persist code that later runs outside the sandbox.
-
-Limits you should know:
-
-- A sandbox reduces damage; it is not a virtual machine. Kernel or backend vulnerabilities can defeat it.
-- Some distributions restrict unprivileged user namespaces (for example Ubuntu 24.04). `kellu doctor` checks this.
-- The `network` profile deliberately weakens isolation.
-- macOS and Windows backends are later work; until then those platforms run with a reduced tool set.
-- **bubblewrap before 0.12.0 is affected by CVE-2026-87766** (symlink traversal while bubblewrap creates files in attacker-controlled content during setup). Kellu's mount layout never creates mountpoints inside a project tree, so the precondition does not hold, and `kellu doctor` warns when the version is older. Strict mode (`sandbox.require_patched_bwrap = true`) refuses to run below 0.12.0. Distribution packages may carry the fix without a matching version number, or may drop it again: check your distribution's changelog.
-
-## Data egress and sanitization
-
-- **Outbound:** deny globs, then secret redaction (known token formats, high-entropy strings, private key blocks), with reversible placeholders so answers can be re-hydrated locally.
-- **Inbound:** all external content is untrusted. Filtering cannot stop prompt injection by itself, which is why privilege separation, confirmation and the sandbox exist.
-- Redaction is **best effort**. Patterns and entropy checks miss things. Do not rely on them as the only protection for highly sensitive material; use local-only mode or do not send it.
-- The terminal REPL and the LSP server send code context to the provider you configure. Until the egress controls ship, do not enable Kellu on files that contain secrets.
-
-## Supply chain and development practices
-
-- Minimal dependencies; heavier ones are optional extras (`[tui]`, `[local]`).
-- Pinned versions, `pip-audit` and tests in CI, hashes for release artifacts.
-- Security-relevant modules (vault, redaction, permissions, sandbox) are written test-first, including negative tests (for example: the sandbox cannot read `~/.ssh`, cannot reach the network, cannot write outside the project).
-- Legacy prototype code is ported module by module against a checklist: known bugs fixed, no side effects on import, injected configuration, tests. Secrets and `.env` files are never committed.
-
-## Security roadmap
-
-| Milestone | Security deliverable |
-|---|---|
-| M0 | This document, `.gitignore` for secrets, CI with `pip-audit` |
-| M1 (done) | No side effects on import; private state directories (0700) and files (0600) opened without following symlinks; strict, secret-free TOML configuration; redacting, rotating logs; session logs that sanitize control characters and cannot forge structure |
-| M2 (done) | Endpoints must be https (http only for localhost) and are rechecked by the transport; redirects are refused so keys are never replayed to another host; response, line and stream-duration limits; keys travel only in headers, are validated against header injection and scrubbed from every error message; provider responses and tool calls are validated (names, JSON arguments, counts); a stream fails over only before any text was delivered; per-provider timeouts and a total time budget |
-| M3 | Keyring vault with tiers, migration, scrubbed environment, deny globs, redaction v1, risk-based permissions, scope and `Grant`, append-only audit log |
-| M4 | Sandbox backend, mounts derived from the `Grant`, staging copy, resource limits, `kellu doctor` (including the bubblewrap version warning), escape tests |
-| M5 | Tool registry requiring a declared risk level; proposal contract and host-side apply of approved hunks; host-side git and `gh` writes with confirmation |
-| M6 | LSP and REPL honoring deny globs and redaction |
-| 0.2.0 | Agent loop gated by the policy engine; injection-oriented tests |
-| 0.4.0 | Memory store with acceptance criteria, expiry and "from memory" labeling |
-| 0.5.0 | MCP client with per-server allowlist, sandboxing and risk mapping; extension tool descriptions treated as untrusted |
-
-## Hardening checklist for users
-
-- Install `bubblewrap` and run `kellu doctor`.
-- Keep infrastructure and database secrets out of the `provider` tier.
-- Use fine-grained, short-lived tokens; rotate anything that was ever exposed.
-- Prefer local-only mode for sensitive projects.
-- Review confirmations; do not enable the `unsafe` profile as a habit.
-- Keep Kellu, bubblewrap and your kernel up to date.
+If you discover a security vulnerability within Kellu, please report it via email or open a private security advisory on the repository. Do not open public issues for sensitive security bugs.

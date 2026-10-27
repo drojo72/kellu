@@ -1,0 +1,18 @@
+name: ffi-bit_masks
+summary: Adds support for bit-masked types in FFI.
+description:
+  FFI plugin which adds support for bitmasked types (or flags) to FFI.
+
+license: MIT
+authors: Postmodern
+email: postmodern.mod3@gmail.com
+homepage: https://github.com/postmodern/ffi-bit_masks#readme
+
+dependencies:
+  ffi: ~> 1.0
+
+development_dependencies:
+  rspec: ~> 3.0
+  rubygems-tasks: ~> 0.2
+  yard: ~> 0.8
+  rake: ~> 10.4

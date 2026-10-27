@@ -1,0 +1,6 @@
+current directory: /home/claudio/Development_Area/kellu/vendor/bundle/ruby/3.2.0/gems/keyring-0.4.1/ext
+/usr/bin/ruby3.2 mkrf_conf.rb
+*linux: installing gir_ffi-gnome_keyring...
+
+current directory: /home/claudio/Development_Area/kellu/vendor/bundle/ruby/3.2.0/gems/keyring-0.4.1/ext
+/usr/bin/ruby3.2 -I/usr/lib/ruby/vendor_ruby -rrubygems /home/claudio/Development_Area/kellu/vendor/bundle/ruby/3.2.0/gems/rake-13.4.2/exe/rake RUBYARCHDIR\=/home/claudio/Development_Area/kellu/vendor/bundle/ruby/3.2.0/extensions/x86_64-linux-gnu/3.2.0/keyring-0.4.1 RUBYLIBDIR\=/home/claudio/Development_Area/kellu/vendor/bundle/ruby/3.2.0/extensions/x86_64-linux-gnu/3.2.0/keyring-0.4.1
