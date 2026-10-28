@@ -7,66 +7,121 @@ module Kellu
   module Core
     class Config
       DEFAULT_DIR = File.expand_path('~/.config/kellu')
-      DEFAULT_CONFIG_PATH = File.join(DEFAULT_DIR, 'config.toml')
+      DEFAULT_PATH = File.join(DEFAULT_DIR, 'config.toml')
+
+      DEFAULT_SETTINGS = {
+        'general' => {
+          'default_provider' => 'deepseek',
+          'default_model' => 'deepseek-chat',
+          'timeout' => 30
+        },
+        'providers' => {
+          'deepseek' => {
+            'enabled' => true,
+            'api_base' => 'https://api.deepseek.com/v1',
+            'model' => 'deepseek-chat'
+          },
+          'openrouter' => {
+            'enabled' => true,
+            'api_base' => 'https://openrouter.ai/api/v1',
+            'model' => 'anthropic/claude-3.5-sonnet'
+          },
+          'google' => {
+            'enabled' => true,
+            'api_base' => 'https://generativelanguage.googleapis.com/v1beta',
+            'model' => 'gemini-2.5-pro'
+          },
+          'gemma' => {
+            'enabled' => true,
+            'api_base' => 'https://generativelanguage.googleapis.com/v1beta',
+            'model' => 'gemma4'
+          },
+        }
+      }.freeze
 
       attr_reader :config_path, :data
 
-      # Estructura por defecto para inicializar un archivo de configuración nuevo
-      DEFAULT_TEMPLATE = <<~TOML
-        # Configuración global de Kellu LSP
-        version = "1.0"
-        default_profile = "default"
-
-        [profiles.default]
-        provider = "deepseek"
-        model = "deepseek-chat"
-        temperature = 0.2
-        max_tokens = 2048
-
-        [profiles.creative]
-        provider = "google"
-        model = "gemini-2.5-pro"
-        temperature = 0.7
-        max_tokens = 4096
-      TOML
-
-      def initialize(config_path: DEFAULT_CONFIG_PATH)
+      def initialize(config_path = DEFAULT_PATH)
         @config_path = config_path
-        @data = load_or_create_config
+        @data = load_or_initialize
       end
 
-      # Obtiene una clave usando notación de puntos (ej: "profiles.default.model")
-      def get(path)
-        path.to_s.split('.').inject(@data) do |acc, key|
-          acc.is_a?(Hash) ? acc[key] : nil
-        end
+      # Permite acceder a las secciones como métodos o claves
+      def [](section)
+        @data[section.to_s]
       end
 
-      # Obtiene el perfil activo actual basándose en default_profile
-      def current_profile
-        profile_name = @data['default_profile'] || 'default'
-        profiles = @data['profiles'] || {}
-        profiles[profile_name] || {}
+      def general
+        @data['general'] || {}
       end
 
-      # Guarda los cambios actuales de vuelta al archivo TOML
+      def provider_config(name)
+        providers = @data['providers'] || {}
+        providers[name.to_s] || {}
+      end
+
       def save!
         FileUtils.mkdir_p(File.dirname(@config_path))
-        # Nota: Si prefieres serializar de vuelta a TOML puro, puedes usar una gema como 'toml-rb' para volcar,
-        # o mantener un volcado estructurado. Por ahora, aseguramos la lectura robusta.
+        File.write(@config_path, serialize_toml(@data))
       end
 
       private
 
-      def load_or_create_config
+      def load_or_initialize
         unless File.exist?(@config_path)
           FileUtils.mkdir_p(File.dirname(@config_path))
-          File.write(@config_path, DEFAULT_TEMPLATE)
+          @data = DEFAULT_SETTINGS.dup
+          save!
+          return @data
         end
 
-        Tomlrb.load_file(@config_path, symbolize_keys: false)
-      rescue Tomlrb::ParseError => e
-        raise "Error al parsear el archivo de configuración en #{@config_path}: #{e.message}"
+        begin
+          TomlRB.load_file(@config_path, symbolize_keys: false)
+        rescue StandardError => e
+          raise "Error al parsear el archivo de configuración en #{@config_path}: #{e.message}"
+        end
+      end
+
+      # Serializador simple a formato TOML para evitar gemas pesadas de escritura
+      def serialize_toml(hash, prefix = '')
+        lines = []
+        tables = []
+
+        hash.each do |key, value|
+          if value.is_a?(Hash)
+            tables << [prefix.empty? ? key : "#{prefix}.#{key}", value]
+          else
+            lines << "#{key} = #{format_toml_value(value)}"
+          end
+        end
+
+        tables.each do |table_name, sub_hash|
+          lines << ""
+          lines << "[#{table_name}]"
+          sub_hash.each do |sub_key, sub_val|
+            if sub_val.is_a?(Hash)
+              # Manejo de sub-tablas anidadas si fuera necesario
+              tables << ["#{table_name}.#{sub_key}", sub_val]
+            else
+              lines << "#{sub_key} = #{format_toml_value(sub_val)}"
+            end
+          end
+        end
+
+        lines.join("\n") + "\n"
+      end
+
+      def format_toml_value(value)
+        case value
+        when String
+          "\"#{value}\""
+        when TrueClass, FalseClass
+          value.to_s
+        when Numeric
+          value.to_s
+        else
+          "\"#{value}\""
+        end
       end
     end
   end

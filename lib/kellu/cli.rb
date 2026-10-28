@@ -45,14 +45,12 @@ module Kellu
 
         if secrets.empty?
           say "No se encontraron credenciales en el Keyring.", :yellow
-          # Si está vacío, permitimos al menos añadir una clave
           choice = ask("¿Deseas crear una nueva clave ahora? (+ para crear, o presiona Enter para salir):", default: "")
           break unless choice == "+"
           interactive_create(manager)
           next
         end
 
-        # Aplicar filtro de categoría si el usuario lo indicó
         filter_category = options[:category]&.downcase
         display_secrets = secrets
         if filter_category
@@ -63,14 +61,12 @@ module Kellu
           end
         end
 
-        # 1. Agrupamos por categoría
         categorized = Hash.new { |h, k| h[k] = [] }
         display_secrets.each do |secret|
           cat = secret['category'] || 'other'
           categorized[cat] << secret
         end
 
-        # 2. Asignamos índice global para visualización
         indexed_secrets = []
         current_index = 1
 
@@ -113,7 +109,6 @@ module Kellu
         response = ask("¿Estás seguro de que deseas eliminar permanentemente la credencial '#{service_name}'? [s/N]:", default: "n").to_s.strip
 
         if response.downcase == "s" || response.downcase == "si"
-          # Pasamos los atributos completos que exige secret-tool clear para encontrar el registro exacto
           command = [
             "secret-tool", "clear",
             "application", "kellu",
@@ -139,8 +134,6 @@ module Kellu
 
     def interactive_create(manager)
       say "\n✨ --- Nueva Credencial ---", :magenta
-
-      # Limpiamos estrictamente el nombre del servicio para evitar espacios o saltos de línea
       service = ask("Nombre del servicio:", echo: true).to_s.strip
       return if service.empty?
 
@@ -159,7 +152,22 @@ module Kellu
     end
   end
 
+  class ConfigCLI < Thor
+    desc "show", "Muestra la configuración actual cargada"
+    def show
+      config = Kellu::Core::Config.new
+      say("📁 Archivo de configuración: #{config.config_path}", :green)
+
+      config.data.each do |section, values|
+        say("\n[#{section}]", :yellow)
+        values.each { |k, v| say("  #{k} = #{v}") }
+      end
+    end
+  end
+
   class CLI < Thor
+    class_option :config, type: :string, desc: 'Ruta alternativa al archivo de configuración TOML'
+
     def self.exit_on_failure?
       true
     end
@@ -167,9 +175,56 @@ module Kellu
     desc "secret SUBCOMMAND ...", "Gestiona las credenciales de forma segura"
     subcommand "secret", SecretCLI
 
+    desc "config SUBCOMMAND ...", "Gestiona la configuración de la aplicación"
+    subcommand "config", ConfigCLI
+
+    desc "chat PROMPT", "Envía una consulta al enrutador multiproveedor de Kellu"
+    method_option :provider, aliases: "-p", type: :string, desc: "Proveedor a utilizar (deepseek, openrouter, google)"
+    method_option :model, aliases: "-m", type: :string, desc: "Modelo de lenguaje específico"
+    method_option :temperature, aliases: "-t", type: :numeric, default: 0.7, desc: "Temperatura de generación"
+
+    def chat(prompt)
+      say("🔍 DEBUG options[:provider] = #{options[:provider].inspect}", :magenta) # Añade esto temporalmente
+
+      config = load_configuration
+      router = Core::Router.new(config: config)
+
+      provider_name = options[:provider]
+      model_name = options[:model]
+      temperature = options[:temperature]
+
+      active_provider = provider_name || config.general['default_provider'] || 'deepseek'
+      say("🤖 Consultando a [#{active_provider}]...", :cyan)
+
+      response = router.chat(
+        prompt,
+        provider_name: provider_name,
+        model: model_name,
+        options: { temperature: temperature }
+      )
+
+      print_response(response)
+    rescue StandardError => e
+      say("❌ Error crítico: #{e.message}", :red)
+      exit(1)
+    end
+
     desc "version", "Muestra la versión actual"
     def version
       say "Kellu v#{Kellu::VERSION}", :cyan
+    end
+
+    private
+
+    def load_configuration
+      config_path = options[:config]
+      config_path ? Core::Config.new(config_path) : Core::Config.new
+    end
+
+    def print_response(response)
+      say("\n" + "=" * 50, :green)
+      say(response)
+      say("=" * 50 + "\n", :green)
     end
   end
 end

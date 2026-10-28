@@ -11,3 +11,10 @@ end
 require_relative "kellu/security/keyring"
 require_relative "kellu/core/config"
 require_relative "kellu/core/router"
+
+# Requerimos el módulo de proveedores y sus adaptadores
+require_relative "kellu/providers/base"
+require_relative "kellu/providers/deepseek_adapter"
+require_relative "kellu/providers/openrouter_adapter"
+require_relative "kellu/providers/google_adapter"
+require_relative "kellu/providers/gemma_adapter"

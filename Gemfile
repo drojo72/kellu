@@ -15,7 +15,7 @@ gem "http", "~> 5.2"
 gem "keyring", "~> 0.4.1"
 
 # Parseo de archivos de configuración TOML
-gem "toml-rb", "~> 2.2"
+gem "toml-rb","~> 2.2", require: false
 
 group :development, :test do
   gem "minitest", "~> 5.20"
