@@ -1,3 +1,13 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcet="/assets/branding/svg/kellu-logo-color-dark.svg">
+    <img alt="Kellu" src="/assets/branding/svg/kellu-logo-color-light.svg" width="350">
+  </picture>
+    <em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em>
+</p>
+
+---
+
 # KELLU — Terminal identity mockup
 
 ![terminal mockup](mockups/kellu-terminal.png)

@@ -1,3 +1,13 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcet="/assets/branding/svg/kellu-logo-color-dark.svg">
+    <img alt="Kellu" src="/assets/branding/svg/kellu-logo-color-light.svg" width="350">
+  </picture>
+    <em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em>
+</p>
+
+---
+
 # What Kellu can do through Kate's LSP client
 
 Sources: the Kate handbook page "LSP Client Plugin" (docs.kde.org, KF6) and the kate-agents README.
