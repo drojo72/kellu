@@ -2,10 +2,6 @@
 
 [English](README.md) · [Español](README.es.md)
 
-<div style="background-color: #091C2D; padding: 25 px; text-align: center; border-radius: 8px;">
-  <img src="/assets/branding/svg/kellu-logotipo.svg" alt= "Kellu Logotype" width="160" />
-</div>
-
 **Secure and modular AI assistant for the Kate editor that thinks before spending tokens.**
 
 > **Status: pre-0.1.0.** Rebuilt from scratch with a security-first design. An earlier prototype is being ported module by module. APIs, commands and configuration will change. Not yet installable from PyPI. Security model: see [SECURITY.md](SECURITY.md).
@@ -208,18 +204,6 @@ Interoperability is a goal, not an existing integration. No endorsement by their
 ## About the name
 
 *Kellu* means "helper" in Mapudungun, the language of the Mapuche people. The name reflects the project’s purpose: an assistant that helps, quietly, inside the tools you already use.
-
-# KELLU — Branding documentation
-
-Documentation and asset structure for the KELLU visual identity. Image paths are intentional placeholders; add your actual PNGs locally and verify relative links before publishing.
-
-- [Brand guide](docs/branding/brand-guide.md)
-- [Brand history and cultural inspiration](docs/branding/brand-history.md)
-- [Isotype construction](docs/branding/isotype-construction.md)
-- [Typography and licensing](docs/branding/typography.md)
-- [Terminal mockup](docs/branding/terminal-mockup.md)
-
-SVG paths are the master logo assets. PNG icons are derived compatibility exports. Keep distributed logo wordmarks converted to paths.
 
 ## Contributing
 
