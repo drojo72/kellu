@@ -30,9 +30,8 @@ Behavior parity comes first; new work (M3 onwards) starts only after parity.
 - `main`: the Rust implementation, with a fresh history.
 
 Brand assets and the development log can be brought over without history:
-`git checkout kellu-prototype-ruby -- assets docs/branding docs/bitacora`. The header of every
-Markdown file points to `/assets/branding/svg/kellu-logo-color-*.svg`, so that checkout is needed
-for the logo to render.
+`git checkout kellu-prototype-ruby -- assets docs/branding docs/bitacora` (already done on `main`).
+The header of every Markdown file points to `/assets/branding/svg/kellu-logo-color-*.svg`.
 
 ## What carries over unchanged
 

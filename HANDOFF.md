@@ -32,8 +32,8 @@ del prototipo Ruby (marca y bitácora), sin su historia:
 git checkout kellu-prototype-ruby -- assets docs/branding docs/bitacora
 ```
 
-El encabezado de todos los `.md` apunta a `/assets/branding/svg/kellu-logo-color-*.svg`: sin ese
-checkout el logo no se ve.
+El encabezado de todos los `.md` apunta a `/assets/branding/svg/kellu-logo-color-*.svg`; esos
+activos ya están en `main` (y en GitHub), así que el logo se ve.
 
 ## 0. Qué cambia y qué no
 - **No cambia:** el diseño completo (amenazas, autorización, sandbox, LSP, auditoría), el esquema
@@ -130,11 +130,13 @@ perfiles de hardware y MCP.
 - Crear las ramas (comandos arriba). Considerar reservar `kellu` en crates.io.
 - Rellenar `<copyright holder>` (LICENSE y `authors` en `Cargo.toml`), `<your-user>` (READMEs y `repository` en `Cargo.toml`) y el contacto de seguridad de `SECURITY.md`.
 - Fijar las acciones de GitHub por SHA antes de publicar (el CI de Rust ya existe; falta ejecutarlo en GitHub por primera vez).
-- Traer los activos de marca (`git checkout kellu-prototype-ruby -- assets docs/branding docs/bitacora`) para que el logo del encabezado se vea.
+- Aplicar el encabezado a los `.md` de `docs/branding/` (no pasaron por la sesión): `add-md-header.sh`, idempotente.
 - Borrar `test_key` y la entrada antigua de gemma_direct.
 - Confirmar en su cuenta el identificador de modelo de Grok y que los alias de Gemini respondan.
 - Probar en su Kate: si las code actions aparecen sin diagnóstico, `showMessage` y `$/progress`, y si `.kateproject` puede sobrescribir el comando del servidor.
 - Marca: versión de 16 px, vectorización, fuente libre y su registro de licencia.
+- Mapas de bits en `assets/branding/png/` (varios tamaños, para quien no tenga soporte SVG): se hacen a mano para ajustar el espaciado del isotipo y del wordmark cuando se reducen mucho. Sin prioridad.
+- `packaging/kellu.desktop`: ya está en el repo (`Exec=konsole -e kellu`, `Icon=utilities-terminal`). Hasta M6 `kellu` sin argumentos solo imprime la ayuda, así que la ventana de Konsole se cierra al instante; cambiar el icono por el de la marca cuando existan los PNG.
 
 ## 6. Cómo trabajar
 - Entorno de verificación (se repite en cada sesión; no persiste):
@@ -161,7 +163,7 @@ audit` (no se pudo instalar a tiempo); el CI en GitHub (no se ha ejecutado); las
 ## 8. Archivos de este traspaso
 `HANDOFF.md`, `README.md`, `README.es.md`, `SECURITY.md`, `CHANGELOG.md`, `LICENSE`,
 `docs/ARCHITECTURE.md`, `docs/PORTING.md`, `docs/porting/python-tests.txt`, `docs/porting/PARITY.md`,
-`docs/design/permissions-and-sandbox.md`, `docs/design/lsp-capabilities.md` y el workspace de Cargo completo (`kellu-M1.zip`). `kellu-project-instructions.md` vive como
+`docs/design/permissions-and-sandbox.md`, `docs/design/lsp-capabilities.md`, `packaging/kellu.desktop` y el workspace de Cargo completo (`kellu-M1.zip`). `kellu-project-instructions.md` vive como
 instrucciones del proyecto y no está en el repositorio. El prototipo de Python completo
 (`kellu-M2.zip`) es para la rama `original-python`.
 

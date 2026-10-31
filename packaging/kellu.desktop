@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Kellu
+Comment=Secure, modular AI assistant for Kate
+Exec=konsole -e kellu
+Icon=utilities-terminal
+Type=Application
+Terminal=false
+Categories=Development;ConsoleOnly;
+Keywords=AI;assistant;Kate;terminal;LSP;
+StartupNotify=true
