@@ -4,7 +4,7 @@
     <img alt="Kellu" src="/assets/branding/svg/kellu-logo-color-light.svg" width="350">
   </picture>
 </p>
-<p>
+<p align="center">
     <em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em>
 </p>
 
