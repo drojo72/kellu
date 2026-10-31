@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 kellu-common.workspace = true
+kellu-core.workspace = true
 clap.workspace = true
 
 [dev-dependencies]

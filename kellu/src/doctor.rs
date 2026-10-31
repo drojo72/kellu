@@ -1,7 +1,7 @@
 //! Environment checks for `kellu doctor`.
 //!
-//! Basic for now: tool presence and paths. Configuration validity arrives in M1; sandbox probing
-//! (user namespaces, bubblewrap version) and keyring access checks arrive in M4.
+//! Basic so far: tool presence, configuration validity and paths. Sandbox probing (user
+//! namespaces, bubblewrap version) and keyring access checks arrive in M4.
 
 use std::env;
 use std::io::Write;
@@ -9,6 +9,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use kellu_common::paths;
+use kellu_core::config::Config;
 
 /// Result of one environment check.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +22,9 @@ pub struct Check {
 
 /// Looks up an executable by name (injectable so tests never depend on the host).
 pub type Which<'a> = &'a dyn Fn(&str) -> Option<PathBuf>;
+
+/// Loads the configuration (injectable for the same reason).
+pub type ConfigLoader<'a> = &'a dyn Fn() -> kellu_common::Result<Config>;
 
 /// Find `binary` in `PATH`: a regular file with at least one execute bit.
 pub fn find_in_path(binary: &str) -> Option<PathBuf> {
@@ -58,9 +62,33 @@ fn tool_check(
     }
 }
 
+fn config_check(load: ConfigLoader<'_>) -> Check {
+    match load() {
+        Ok(config) => {
+            let place = config.source().map_or_else(
+                || "packaged defaults".to_owned(),
+                |p| p.display().to_string(),
+            );
+            Check {
+                name: "config",
+                ok: true,
+                required: true,
+                detail: format!("{place} ({} providers)", config.providers().len()),
+            }
+        }
+        Err(error) => Check {
+            name: "config",
+            ok: false,
+            required: true,
+            detail: error.to_string(),
+        },
+    }
+}
+
 /// Run all checks.
-pub fn collect_checks(which: Which<'_>) -> Vec<Check> {
+pub fn collect_checks(which: Which<'_>, load: ConfigLoader<'_>) -> Vec<Check> {
     vec![
+        config_check(load),
         tool_check(
             which,
             "secret-tool",
@@ -97,8 +125,8 @@ fn show_dir(label: &str, dir: kellu_common::Result<PathBuf>) -> String {
 }
 
 /// Print a report and return the exit code (0 when every required check passes).
-pub fn run(which: Which<'_>, out: &mut dyn Write) -> u8 {
-    let checks = collect_checks(which);
+pub fn run(which: Which<'_>, load: ConfigLoader<'_>, out: &mut dyn Write) -> u8 {
+    let checks = collect_checks(which, load);
     for check in &checks {
         let status = match (check.ok, check.required) {
             (true, _) => "ok",
@@ -117,7 +145,7 @@ pub fn run(which: Which<'_>, out: &mut dyn Write) -> u8 {
     say(out, "");
     say(
         out,
-        "Config validation arrives in M1; sandbox probing (user namespaces, bubblewrap policy) in M4.",
+        "Sandbox probing (user namespaces, bubblewrap policy) arrives in M4.",
     );
     if checks.iter().all(|c| c.ok || !c.required) {
         crate::cli::EXIT_OK
@@ -128,6 +156,9 @@ pub fn run(which: Which<'_>, out: &mut dyn Write) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    use kellu_common::KelluError;
+    use kellu_core::config::load_config;
+
     use super::*;
 
     fn everything(name: &str) -> Option<PathBuf> {
@@ -142,34 +173,49 @@ mod tests {
         }
     }
 
-    fn report(which: Which<'_>) -> (u8, String) {
+    fn defaults() -> kellu_common::Result<Config> {
+        // A path that does not exist: packaged defaults only, independent of the host.
+        load_config(Some(Path::new("/nonexistent/kellu-test/config.toml")))
+    }
+
+    fn broken() -> kellu_common::Result<Config> {
+        Err(KelluError::config(
+            "providers: at least one provider is required",
+        ))
+    }
+
+    fn report(which: Which<'_>, load: ConfigLoader<'_>) -> (u8, String) {
         let mut out = Vec::new();
-        let code = run(which, &mut out);
+        let code = run(which, load, &mut out);
         (code, String::from_utf8(out).unwrap())
     }
 
     #[test]
     fn all_tools_present_passes() {
-        let (code, text) = report(&everything);
+        let (code, text) = report(&everything, &defaults);
         assert_eq!(code, 0);
-        assert!(!text.contains("FAIL") && !text.contains("warn"));
+        assert!(!text.contains("FAIL") && !text.contains("warn"), "{text}");
+        assert!(
+            text.contains("[  ok] config: packaged defaults (5 providers)"),
+            "{text}"
+        );
     }
 
     #[test]
     fn checks_are_marked_required_or_optional() {
-        let checks = collect_checks(&everything);
+        let checks = collect_checks(&everything, &defaults);
         let required: Vec<_> = checks
             .iter()
             .filter(|c| c.required)
             .map(|c| c.name)
             .collect();
-        assert_eq!(required, ["secret-tool"]);
+        assert_eq!(required, ["config", "secret-tool"]);
         assert!(checks.iter().any(|c| c.name == "bwrap" && !c.required));
     }
 
     #[test]
     fn missing_required_tool_fails() {
-        let (code, text) = report(&only(&["bwrap", "git"]));
+        let (code, text) = report(&only(&["bwrap", "git"]), &defaults);
         assert_eq!(code, 1);
         assert!(text.contains("[FAIL] secret-tool"));
         assert!(text.contains("libsecret-tools"));
@@ -177,10 +223,20 @@ mod tests {
 
     #[test]
     fn missing_optional_tool_only_warns() {
-        let (code, text) = report(&only(&["secret-tool"]));
+        let (code, text) = report(&only(&["secret-tool"]), &defaults);
         assert_eq!(code, 0);
         assert!(text.contains("[warn] bwrap"));
         assert!(text.contains("fail closed"));
+    }
+
+    #[test]
+    fn invalid_config_fails_the_check() {
+        let (code, text) = report(&everything, &broken);
+        assert_eq!(code, 1);
+        assert!(
+            text.contains("[FAIL] config: providers: at least one provider is required"),
+            "{text}"
+        );
     }
 
     #[test]

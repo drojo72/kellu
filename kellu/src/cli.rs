@@ -7,6 +7,7 @@ use std::io::Write;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use kellu_common::app::{DISPLAY_NAME, NAME};
+use kellu_core::config::{self, Config};
 
 use crate::doctor;
 
@@ -30,10 +31,13 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Check the environment (keyring and sandbox tooling)
+    /// Check the environment (config, keyring and sandbox tooling)
     Doctor,
-    /// (planned for M1)
-    Config,
+    /// Inspect the configuration
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
     /// (planned for M3)
     Keys,
     /// (planned for M5)
@@ -42,25 +46,24 @@ enum Command {
     Lsp,
 }
 
-impl Command {
-    /// The milestone that will implement this command, for commands that are only planned.
-    fn planned_for(&self) -> Option<&'static str> {
-        match self {
-            Self::Doctor => None,
-            Self::Config => Some("M1"),
-            Self::Keys => Some("M3"),
-            Self::Tools => Some("M5"),
-            Self::Lsp => Some("M6"),
-        }
-    }
+#[derive(Debug, Clone, Copy, Subcommand)]
+enum ConfigAction {
+    /// Print the user configuration file location
+    Path,
+    /// Validate the effective configuration
+    Check,
+    /// Show providers and routes (never secrets)
+    Show,
+}
 
-    fn name(&self) -> &'static str {
+impl Command {
+    /// The milestone that will implement a command that is only planned.
+    fn planned(&self) -> Option<(&'static str, &'static str)> {
         match self {
-            Self::Doctor => "doctor",
-            Self::Config => "config",
-            Self::Keys => "keys",
-            Self::Tools => "tools",
-            Self::Lsp => "lsp",
+            Self::Keys => Some(("keys", "M3")),
+            Self::Tools => Some(("tools", "M5")),
+            Self::Lsp => Some(("lsp", "M6")),
+            Self::Doctor | Self::Config { .. } => None,
         }
     }
 }
@@ -68,6 +71,89 @@ impl Command {
 fn say(out: &mut dyn Write, text: &str) {
     // A closed pipe (`kellu doctor | head`) must not crash the process.
     let _ = writeln!(out, "{text}");
+}
+
+fn load() -> kellu_common::Result<Config> {
+    config::load_config(None)
+}
+
+fn config_path(out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    match config::user_config_path() {
+        Ok(path) => {
+            say(out, &path.display().to_string());
+            if !path.exists() {
+                say(err, "(file does not exist; packaged defaults are in use)");
+            }
+            EXIT_OK
+        }
+        Err(error) => {
+            say(err, &format!("error: {error}"));
+            EXIT_ERROR
+        }
+    }
+}
+
+fn config_check(out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    match load() {
+        Ok(config) => {
+            let source = config.source().map_or_else(
+                || "packaged defaults only".to_owned(),
+                |p| p.display().to_string(),
+            );
+            say(
+                out,
+                &format!(
+                    "ok: {} providers, {} routes ({source})",
+                    config.providers().len(),
+                    config.routing().len()
+                ),
+            );
+            EXIT_OK
+        }
+        Err(error) => {
+            say(err, &format!("error: {error}"));
+            EXIT_ERROR
+        }
+    }
+}
+
+fn config_show(out: &mut dyn Write, err: &mut dyn Write) -> u8 {
+    let config = match load() {
+        Ok(config) => config,
+        Err(error) => {
+            say(err, &format!("error: {error}"));
+            return EXIT_ERROR;
+        }
+    };
+    say(out, "providers:");
+    for (name, provider) in config.providers() {
+        let key = match &provider.keyring_name {
+            Some(keyring) => format!("keyring: ai_{keyring}_api_key"),
+            None => "no key".to_owned(),
+        };
+        say(
+            out,
+            &format!(
+                "  {name:<13} {:<14} {}  {}  ({key})",
+                provider.kind.as_str(),
+                provider.model,
+                provider.base_url
+            ),
+        );
+    }
+    say(out, "routes:");
+    for (task, route) in config.routing() {
+        let chain: Vec<_> = route.chain().collect();
+        say(out, &format!("  {task:<13} {}", chain.join(" -> ")));
+    }
+    say(
+        out,
+        &format!(
+            "router: total time budget {}s",
+            config.router().total_timeout_s
+        ),
+    );
+    EXIT_OK
 }
 
 /// Run the CLI and return the process exit code.
@@ -88,21 +174,25 @@ where
             return u8::try_from(error.exit_code()).unwrap_or(EXIT_ERROR);
         }
     };
-    match cli.command {
-        None => {
-            say(out, &Cli::command().render_help().to_string());
-            say(err, "\nThe interactive assistant arrives in milestone M6.");
-            EXIT_OK
-        }
-        Some(Command::Doctor) => doctor::run(&doctor::find_in_path, out),
-        Some(command) => {
-            let milestone = command.planned_for().unwrap_or("a later milestone");
+    let Some(command) = cli.command else {
+        say(out, &Cli::command().render_help().to_string());
+        say(err, "\nThe interactive assistant arrives in milestone M6.");
+        return EXIT_OK;
+    };
+    match command {
+        Command::Doctor => doctor::run(&doctor::find_in_path, &load, out),
+        Command::Config { action } => match action {
+            ConfigAction::Path => config_path(out, err),
+            ConfigAction::Check => config_check(out, err),
+            ConfigAction::Show => config_show(out, err),
+        },
+        planned => {
+            let (name, milestone) = planned
+                .planned()
+                .unwrap_or(("command", "a later milestone"));
             say(
                 err,
-                &format!(
-                    "{NAME} {}: not implemented yet (planned for {milestone}).",
-                    command.name()
-                ),
+                &format!("{NAME} {name}: not implemented yet (planned for {milestone})."),
             );
             EXIT_NOT_IMPLEMENTED
         }

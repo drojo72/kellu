@@ -9,6 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
+http.workspace = true
 rustix.workspace = true
 thiserror.workspace = true
 

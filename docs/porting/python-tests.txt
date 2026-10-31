@@ -1,0 +1,166 @@
+# Python prototype test inventory (reference specification)
+
+Branch `original-python`, directory `tests/unit/`. Each test function below must have a Rust
+counterpart in the port, or an explicit written reason why it does not apply.
+Parametrized cases are listed once. 185 collected cases in total at the time of writing.
+
+## test_architecture.py (2 functions)
+- test_every_source_directory_is_a_declared_layer
+- test_layer_only_imports_allowed_layers
+
+## test_cli.py (9 functions)
+- test_config_check_reports_a_rejected_secret
+- test_config_check_with_defaults_succeeds
+- test_config_path_prints_the_user_file_location
+- test_config_requires_an_action
+- test_config_show_lists_providers_and_routes_without_secrets
+- test_no_command_prints_help
+- test_planned_commands_report_not_implemented
+- test_unknown_command_is_a_usage_error
+- test_version_flag
+
+## test_config.py (24 functions)
+- test_config_is_immutable
+- test_credentials_in_urls_are_rejected
+- test_group_or_world_writable_file_is_rejected
+- test_invalid_toml_is_a_config_error
+- test_legitimate_keys_with_similar_words_are_not_flagged
+- test_log_level_is_validated_and_normalized
+- test_missing_user_file_means_defaults_only
+- test_non_http_schemes_are_rejected
+- test_oversized_file_is_rejected
+- test_packaged_defaults_are_valid
+- test_plain_http_is_only_allowed_for_localhost
+- test_provider_kinds_match_the_registry
+- test_route_must_reference_known_providers
+- test_route_rejects_duplicate_providers
+- test_router_total_timeout_is_validated
+- test_router_unknown_key_is_rejected
+- test_secret_looking_keys_are_rejected
+- test_symlinked_config_is_rejected
+- test_timeout_must_be_a_number_in_range
+- test_unknown_provider_field_is_rejected
+- test_unknown_task_falls_back_to_general_route
+- test_unknown_top_level_key_is_rejected
+- test_user_can_add_provider_and_route
+- test_user_file_overrides_part_of_a_provider
+
+## test_doctor.py (5 functions)
+- test_all_tools_present_passes
+- test_checks_are_marked_required_or_optional
+- test_invalid_config_fails_the_check
+- test_missing_optional_tool_only_warns
+- test_missing_required_tool_fails
+
+## test_log.py (8 functions)
+- test_configuring_twice_does_not_duplicate_output
+- test_control_characters_are_stripped
+- test_creates_private_directory_and_file
+- test_importing_the_module_creates_nothing
+- test_logger_does_not_propagate_to_root
+- test_redaction_applies_to_messages_and_exceptions
+- test_rotated_files_stay_private
+- test_unknown_level_is_rejected
+
+## test_paths.py (13 functions)
+- test_absolute_xdg_variable_is_honored
+- test_defaults_follow_xdg_layout
+- test_ensure_private_dir_creates_mode_0700
+- test_ensure_private_dir_rejects_symlink
+- test_ensure_private_dir_tightens_loose_permissions
+- test_ensure_private_file_creates_empty_private_file
+- test_open_private_append_appends
+- test_open_private_append_creates_mode_0600
+- test_open_private_append_new_only_rejects_existing
+- test_open_private_append_refuses_symlink
+- test_open_private_append_tightens_existing_permissions
+- test_relative_xdg_variable_is_ignored
+- test_resolving_paths_does_not_create_anything
+
+## test_providers_google.py (12 functions)
+- test_blocked_prompt_is_a_non_retryable_error
+- test_chat_uses_header_auth_and_never_puts_the_key_in_the_url
+- test_empty_stream_is_an_error
+- test_gemini_uses_a_system_instruction
+- test_gemma_folds_the_system_message_into_the_first_user_turn
+- test_http_error_and_key_scrubbing
+- test_missing_key_fails_before_the_network
+- test_roles_are_mapped_and_generation_config_is_sent
+- test_stream_error_event_raises
+- test_stream_uses_sse_endpoint_and_assembles_the_answer
+- test_thinking_parts_are_not_part_of_the_answer
+- test_tools_are_not_supported_yet
+
+## test_providers_openai.py (26 functions)
+- test_assistant_tool_calls_and_tool_results_are_serialized
+- test_chat_returns_text_and_usage
+- test_content_given_as_parts_is_joined
+- test_error_object_inside_http_200_is_an_error
+- test_error_text_never_contains_the_key_or_control_characters
+- test_http_status_maps_to_retryable_flag
+- test_invalid_tool_arguments_are_rejected
+- test_key_with_trailing_newline_is_accepted
+- test_malformed_key_is_rejected_to_prevent_header_injection
+- test_malformed_responses_are_not_retryable
+- test_missing_key_fails_before_any_network_call
+- test_oversized_response_is_rejected
+- test_provider_without_keyring_name_sends_no_authorization
+- test_redirects_are_refused_and_not_followed
+- test_request_goes_to_chat_completions_with_header_auth_only
+- test_stream_accumulates_tool_call_fragments
+- test_stream_error_event_raises
+- test_stream_http_error_is_raised_when_iterating
+- test_stream_that_ends_without_done_or_finish_reason_fails
+- test_stream_with_invalid_json_event_fails
+- test_stream_yields_text_then_a_final_response
+- test_timeout_is_retryable
+- test_tool_name_with_unsafe_characters_is_rejected
+- test_tools_are_sent_and_tool_calls_are_parsed
+- test_transport_refuses_unsafe_endpoints_even_if_configured
+- test_unreachable_server_is_retryable
+
+## test_router.py (19 functions)
+- test_all_failures_are_reported_in_order
+- test_build_provider_rejects_unknown_kind
+- test_classify_task
+- test_failures_are_logged_without_secrets
+- test_first_provider_answers_when_it_works
+- test_from_config_builds_one_provider_per_configured_entry
+- test_missing_provider_is_recorded_and_skipped
+- test_non_retryable_error_also_falls_back
+- test_nothing_is_tried_when_no_provider_supports_the_request
+- test_providers_without_tool_support_are_skipped_when_tools_are_requested
+- test_retryable_error_falls_back_to_the_next_provider
+- test_spanish_word_como_does_not_change_the_task_language
+- test_stream_does_not_fail_over_after_text_was_delivered
+- test_stream_fails_over_before_any_text_was_delivered
+- test_stream_reports_all_failures
+- test_stream_returns_events_from_the_first_provider
+- test_stream_that_never_finishes_counts_as_a_failure
+- test_task_selects_its_own_chain
+- test_total_time_budget_stops_new_attempts
+
+## test_session.py (11 functions)
+- test_content_cannot_forge_headings_or_close_the_fence
+- test_context_manager_ends_the_session
+- test_empty_label_uses_default_slug
+- test_end_appends_next_steps_and_closes
+- test_entries_are_redacted_cleaned_and_truncated
+- test_hostile_label_cannot_escape_the_directory
+- test_logging_before_start_or_after_end_fails
+- test_provider_name_is_sanitized
+- test_same_second_sessions_get_unique_files
+- test_start_creates_private_file_with_header
+- test_unknown_kind_is_rejected
+
+## test_text.py (7 functions)
+- test_identity_redactor_returns_text_unchanged
+- test_strip_control_chars_keeps_newline_and_tab
+- test_strip_control_chars_removes_bidi_override
+- test_strip_control_chars_removes_escape_sequences_and_carriage_returns
+- test_truncate_leaves_short_text_alone
+- test_truncate_rejects_non_positive_limit
+- test_truncate_reports_dropped_characters
+
+## test_version.py (1 functions)
+- test_version_is_single_sourced

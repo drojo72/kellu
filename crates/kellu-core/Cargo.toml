@@ -1,0 +1,22 @@
+[package]
+name = "kellu-core"
+description = "Kellu core: configuration, logging and sessions (router and cascade follow)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+kellu-common.workspace = true
+kellu-providers.workspace = true
+log.workspace = true
+toml.workspace = true
+
+[dev-dependencies]
+rustix.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

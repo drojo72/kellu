@@ -20,15 +20,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     // The sandbox derives its mounts from the `Grant`, which lives in `kellu-security`.
     ("kellu-sandbox", &["kellu-common", "kellu-security"]),
     ("kellu-providers", &["kellu-common"]),
-    ("kellu-projects", &["kellu-common", "kellu-security"]),
+    ("kellu-projects", &["kellu-common"]),
     (
         "kellu-tools",
-        &[
-            "kellu-common",
-            "kellu-security",
-            "kellu-sandbox",
-            "kellu-projects",
-        ],
+        &["kellu-common", "kellu-security", "kellu-sandbox"],
     ),
     (
         "kellu-core",

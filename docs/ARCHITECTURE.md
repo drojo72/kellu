@@ -63,10 +63,10 @@ kellu/
 ├── README.md  README.es.md  SECURITY.md  CHANGELOG.md
 ├── .github/workflows/ci.yml
 ├── crates/
-│   └── kellu-common/        M0  identity, errors, XDG paths, private files
+│   ├── kellu-common/        M0  identity, errors, XDG paths, private files; M1 text, net, utc
+│   ├── kellu-providers/     M1  provider types; M2 HTTP transport, OpenAI-compatible, Google, registry
+│   ├── kellu-core/          M1  config, log, session; M2 router
 │       (created when their milestone starts)
-│       kellu-core/          M1  config, log, session; M2 router
-│       kellu-providers/     M2  types, HTTP transport, OpenAI-compatible, Google, registry
 │       kellu-security/      M3  vault, redaction, deny globs, permissions, scope, Grant, audit
 │       kellu-sandbox/       M4  backend trait, bubblewrap, policy from the Grant, staging
 │       kellu-tools/         M5  registry with mandatory risk level; files, shell, git

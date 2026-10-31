@@ -183,6 +183,59 @@ pub fn open_private_append(path: &Path, new_only: bool) -> Result<File> {
     Ok(file)
 }
 
+/// Read a configuration-like file that must not have been tampered with.
+///
+/// Returns `Ok(None)` when the file does not exist. The file is opened without following
+/// symlinks and without blocking (so a FIFO cannot hang the process), then verified on the open
+/// descriptor: a regular file, owned by the current user, not writable by group or others.
+///
+/// # Errors
+///
+/// [`KelluError::Security`] for a symlink, a non-regular file, a foreign owner or loose write
+/// permissions; [`KelluError::Config`] when the file is larger than `max_bytes`;
+/// [`KelluError::Io`] for anything else.
+pub fn read_trusted_file(path: &Path, max_bytes: u64) -> Result<Option<Vec<u8>>> {
+    let flags = NOFOLLOW_FLAGS | OFlags::NONBLOCK.bits() as i32;
+    let file = match OpenOptions::new().read(true).custom_flags(flags).open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) if is_loop(&e) => {
+            return Err(KelluError::security(format!(
+                "{} is a symlink; refusing to follow it",
+                path.display()
+            )));
+        }
+        Err(e) => return Err(KelluError::io(path, e)),
+    };
+    let meta = file.metadata().map_err(|e| KelluError::io(path, e))?;
+    if !meta.is_file() {
+        return Err(KelluError::security(format!(
+            "{} must be a regular file",
+            path.display()
+        )));
+    }
+    ensure_owner(path, meta.uid())?;
+    if meta.mode() & 0o022 != 0 {
+        return Err(KelluError::security(format!(
+            "{0} is writable by group or others; run: chmod go-w {0}",
+            path.display()
+        )));
+    }
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(
+        &mut std::io::Read::take(&file, max_bytes.saturating_add(1)),
+        &mut bytes,
+    )
+    .map_err(|e| KelluError::io(path, e))?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(KelluError::config(format!(
+            "{}: larger than {max_bytes} bytes",
+            path.display()
+        )));
+    }
+    Ok(Some(bytes))
+}
+
 /// Create `path` with mode 0600 if needed (tightening permissions) and verify it.
 ///
 /// # Errors

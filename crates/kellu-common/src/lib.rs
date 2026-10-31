@@ -8,6 +8,9 @@ compile_error!("kellu-common supports Unix-like systems only for now (Linux firs
 
 pub mod app;
 pub mod error;
+pub mod net;
 pub mod paths;
+pub mod text;
+pub mod utc;
 
 pub use error::{KelluError, ProviderError, Result};
