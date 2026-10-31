@@ -1,0 +1,19 @@
+[package]
+name = "kellu-common"
+description = "Shared foundations for Kellu: identity constants, errors, XDG paths and private files."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+rustix.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

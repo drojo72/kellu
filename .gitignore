@@ -1,0 +1,17 @@
+# Build output
+/target/
+
+# Secrets and local state: never commit
+.env
+.env.*
+*.pem
+*.key
+id_*
+credentials*
+*.token
+
+# Editors and OS
+*.swp
+.idea/
+.vscode/
+.DS_Store

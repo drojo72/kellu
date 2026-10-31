@@ -1,0 +1,41 @@
+[workspace]
+resolver = "3"
+# `crates/*` picks up each library crate as soon as its milestone creates it.
+members = ["crates/*", "kellu"]
+
+[workspace.package]
+version = "0.1.0-dev.0"
+edition = "2024"
+rust-version = "1.91"
+license = "MIT"
+repository = "https://github.com/<your-user>/kellu"
+authors = ["<copyright holder>"]
+
+[workspace.dependencies]
+# Internal crates (path dependencies). Layer rules are enforced by kellu/tests/architecture.rs.
+kellu-common = { path = "crates/kellu-common", version = "0.1.0-dev.0" }
+
+# External crates. Every entry needs a one-line justification here.
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] } # CLI parsing
+rustix = { version = "1", default-features = false, features = ["std", "fs", "process"] } # safe syscall API: O_NOFOLLOW flags, getuid, errno
+thiserror = "2" # error enums
+tempfile = "3" # dev only: private temp dirs in tests
+serde_json = "1" # dev only: parse `cargo metadata` in the architecture test
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

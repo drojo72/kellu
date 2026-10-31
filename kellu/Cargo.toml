@@ -1,0 +1,24 @@
+[package]
+name = "kellu"
+description = "Secure, modular AI assistant for the Kate editor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "kellu"
+path = "src/main.rs"
+
+[dependencies]
+kellu-common.workspace = true
+clap.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
