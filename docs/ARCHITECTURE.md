@@ -1,3 +1,15 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="/assets/branding/svg/kellu-logo-color-dark.svg">
+    <img alt="Kellu" src="/assets/branding/svg/kellu-logo-color-light.svg" width="350">
+  </picture>
+</p>
+<p align="center">
+    <em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em>
+</p>
+
+---
+
 # Architecture
 
 Kellu is a small headless core with replaceable adapters. This document defines the crates and the
