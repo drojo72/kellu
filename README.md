@@ -3,6 +3,8 @@
     <source media="(prefers-color-scheme: dark)" srcset="/assets/branding/svg/kellu-logo-color-dark.svg">
     <img alt="Kellu" src="/assets/branding/svg/kellu-logo-color-light.svg" width="350">
   </picture>
+</p>
+<p>
     <em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em>
 </p>
 
