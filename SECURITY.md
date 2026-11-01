@@ -16,9 +16,9 @@ Kellu is an AI assistant that can read your code, call external model providers 
 
 > **Status: pre-0.1.0.** The controls below are the **design** that 0.1.0 must meet, tracked as milestones (see [Security roadmap](#security-roadmap)). Until a control ships, treat it as not implemented.
 >
-> **Implemented and tested so far (M0 and M1):** no side effects at startup or construction; state directories `0700` and files `0600`, opened without following symlinks and verified on the open descriptor (T8); strict, secret-free configuration (T11); log and session files that strip control and format characters, cannot forge structure and cannot be redirected through a symlink (T9, partly).
+> **Implemented and tested so far (M0 to M2):** no side effects at startup or construction; state directories `0700` and files `0600`, opened without following symlinks and verified on the open descriptor (T8); strict, secret-free configuration (T11); log and session files that strip control and format characters, cannot forge structure and cannot be redirected through a symlink (T9, partly); the provider transport (redirects refused, keys only in headers and scrubbed from errors, size and duration limits, https enforced) and validation of provider responses and tool calls (T7, T11, partly).
 >
-> **Not implemented yet:** the redactor itself (logs and sessions call a redaction hook that does nothing until M3, so **secrets are not yet removed from them**), the keyring vault, deny globs, permissions, the sandbox, the providers and every network path. Do not point Kellu at files that contain secrets.
+> **Not implemented yet:** the redactor itself (logs and sessions call a redaction hook that does nothing until M3, so **secrets are not yet removed from them**), the keyring vault (providers receive keys through an injected lookup; the real vault is M3), deny globs, permissions and the sandbox. Network paths exist (providers) but send whatever context they are given without redaction. Do not point Kellu at files that contain secrets.
 
 ## Reporting a vulnerability
 
@@ -171,7 +171,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 |---|---|---|
 | M0 | Done | This document, `.gitignore` for secrets, CI with `cargo deny` and `cargo audit`, private files and directories opened without following symlinks |
 | M1 | Done | No side effects at startup or construction; strict, secret-free TOML configuration; rotating logs and session logs that sanitize control characters and cannot forge structure (the redaction hook is wired, the redactor arrives in M3) |
-| M2 | Next | Endpoints must be https (http only for localhost) and are rechecked by the transport; redirects are refused so keys are never replayed to another host; response, line and stream-duration limits; keys travel only in headers, are validated against header injection and scrubbed from every error message; provider responses and tool calls are validated (names, JSON arguments, counts); a stream fails over only before any text was delivered; per-provider timeouts and a total time budget |
+| M2 | Done | Endpoints must be https (http only for localhost) and are rechecked by the transport; redirects are refused so keys are never replayed to another host; response, line and stream-duration limits; keys travel only in headers, are validated against header injection and scrubbed from every error message; provider responses and tool calls are validated (names, JSON arguments, counts); a stream fails over only before any text was delivered; per-provider timeouts and a total time budget |
 | M3 | Planned | Keyring vault with tiers, migration, scrubbed environment, deny globs, redaction v1, risk-based permissions, scope and `Grant`, append-only audit log |
 | M4 | Planned | Sandbox backend, mounts derived from the `Grant`, staging copy, resource limits, `kellu doctor` (including the bubblewrap version warning), escape tests |
 | M5 | Planned | Tool registry requiring a declared risk level; proposal contract and host-side apply of approved hunks; host-side git and `gh` writes with confirmation |

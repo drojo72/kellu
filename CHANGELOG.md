@@ -24,6 +24,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   branches as behavioral references for the port.
 
 ### Added
+- **M2** (parity with the Python prototype; completes the port, 137 of 137 test functions mapped):
+  - `kellu-providers`: provider-neutral types, the `Provider` trait, an OpenAI-compatible client
+    (chat, streaming, tool calls), a Google client (Gemini and Gemma, streaming), a registry and a
+    hardened HTTP transport on `ureq` with `rustls`.
+  - `kellu-core`: the router (`classify_task` with accent folding, fallback along the configured
+    chain, tool-support skipping, a total time budget) and its stream variant, which fails over
+    only before any text was delivered. An HTTP 402 (no balance) falls back to the next provider.
+  - `kellu-common`: `KelluError::AllProvidersFailed` and `ProviderFailure`.
+  - Dependencies: `ureq`, `serde_json`, `secrecy` (22 more crates in the tree, including `ring`).
+    `deny.toml` allows `CDLA-Permissive-2.0` for the bundled CA list.
 - **M1** (parity with the Python prototype):
   - `kellu-core`: strict configuration over the packaged `defaults.toml` (secret-looking keys,
     plain http, URL credentials, unknown keys and unsafe files are rejected; errors name the key
@@ -43,6 +53,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 - `HANDOFF.md`: state, decisions and open items of the port.
 
 ### Security
+- Provider transport: redirects are refused and never followed; keys travel only in headers (never
+  in URLs), are held in `secrecy` types, are validated against header injection and are scrubbed
+  from every error and log message; endpoints are rechecked by the transport; response, SSE line
+  and total-duration limits; every request is capped at 600 seconds (the prototype capped streams
+  only). Plain-http endpoints never use a proxy from the environment (a proxy would see the key
+  in cleartext); tool-call ids and provider labels are sanitized.
 - Log records are written one per line: newlines in a message are escaped, so a message cannot
   forge further log entries (the Python prototype kept raw newlines).
 - Files read as configuration are opened without blocking, so a FIFO placed at the path cannot hang

@@ -15,7 +15,8 @@
 Each function of `docs/porting/python-tests.txt` (137 functions) needs a Rust counterpart or a
 written reason it does not apply. Gate for leaving M2: no `pending` row.
 
-Status at the close of M1: **80 of 137 functions mapped** (M0 and M1), 57 pending (M2).
+Status at the close of M2: **137 of 137 functions mapped** (M0 and M1: 80; M2: 57). The gate for
+leaving M2 is met: no `pending` row.
 Names without a module prefix are in `kellu/tests/cli.rs` or `kellu/tests/architecture.rs`
 (end-to-end tests of the real binary and of `cargo metadata`).
 
@@ -69,7 +70,7 @@ Names without a module prefix are in `kellu/tests/cli.rs` or `kellu/tests/archit
 | test_config.test_oversized_file_is_rejected | `config::tests::oversized_file_is_rejected`, `a_file_exactly_at_the_limit_is_accepted` | done |
 | test_config.test_packaged_defaults_are_valid | `config::tests::packaged_defaults_are_valid`, `default_routes_match_the_design` | done |
 | test_config.test_plain_http_is_only_allowed_for_localhost | `config::tests::plain_http_is_only_allowed_for_localhost` | done |
-| test_config.test_provider_kinds_match_the_registry | `config::tests::provider_kinds_match_the_registry` (M1: the kind list lives in `kellu-providers::types`; the registry itself arrives in M2, which must keep this test) | done (revisit in M2) |
+| test_config.test_provider_kinds_match_the_registry | `config::tests::provider_kinds_match_the_registry` (the kind list lives in `kellu-providers::types`; `registry::build_provider` matches it exhaustively, so the two cannot drift) | done |
 | test_config.test_route_must_reference_known_providers | `config::tests::route_must_reference_known_providers` | done |
 | test_config.test_route_rejects_duplicate_providers | `config::tests::route_rejects_duplicate_providers` | done |
 | test_config.test_router_total_timeout_is_validated | `config::tests::router_total_timeout_is_validated` | done |
@@ -115,7 +116,15 @@ Names without a module prefix are in `kellu/tests/cli.rs` or `kellu/tests/archit
 |---|---|---|---|
 | Timestamps in log and session files | local time (`datetime.now`) | **UTC** (`kellu-common::utc`) | Local time needs the platform time-zone database, which is not safe to read from a multithreaded program, and the `time` crate would add a dependency for it. Session file names and headers therefore show UTC. Revisit if local time matters to users. |
 | Configuration parsing | dict plus hand checks | `toml` read as a table, validated by hand | Errors name the key path and never echo a value, which `serde` derive errors can do. |
-| URL parsing | hand-written | `http::Uri` | One parser for validation and (from M2) transport, no WHATWG differential, no ICU dependency tree. |
+| URL parsing | hand-written | `http::Uri` | One parser for validation and transport (`ureq` takes `http::Request`, so the URL is parsed once, by us), no WHATWG differential, no ICU dependency tree. |
+| Request time limit | none for `chat` (socket timeout per operation only); 600 s for streams | per-operation timeouts **and** a 600 s cap on every request and stream (`ureq` global timeout) | A server that drips one byte per timeout could hold a non-streaming call open for a long time; the cap closes that gap at no cost. |
+| API key characters | whitespace and control characters rejected | only printable ASCII accepted | A key with other characters could not be sent in a header anyway; failing early gives a clear message. |
+| Stream API | generator that raises when iterated | `EventStream` iterator of `Result`; the request is sent on the first `next()` and every failure, including HTTP status errors, is an `Err` item | Same laziness as the prototype; no panics, one error path. |
+| Tool-call arguments | any JSON value allowed in the payload model | `serde_json::Map` (always an object) | The type states the invariant the prototype checked at runtime. |
+| Proxies | `urllib` honors `*_PROXY` for every endpoint | https endpoints honor `ALL_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` (the proxy only sees a `CONNECT` tunnel); plain-http endpoints (localhost only) **never** use a proxy | A proxy would see the key and the prompt in cleartext. Found by an independent review: `ureq` has no implicit localhost exemption. Regression test: `proxy::plain_http_ignores_the_proxy_environment` (re-runs the test binary with a dead proxy in the environment). |
+| Tool-call ids | missing id becomes `call_<name>` | missing or unsafe id (outside `[A-Za-z0-9_.:-]`) becomes `call_<index>_<name>` | Two calls to the same tool without ids got the same id, so results could not be matched; ids are echoed back to the provider, so they must be safe. |
+| Model and finish reason from the provider | stored as received | control and format characters removed, 200 characters at most | They are shown and logged by callers. |
+| TLS roots | system store (`ssl` default context) | bundled Mozilla roots (`webpki-roots`) | No dependency on the system store or on OpenSSL; a private CA or a TLS-intercepting proxy is not trusted. Revisit (`platform-verifier`) if users need it. |
 
 ## Extra negative tests added in the port
 
@@ -129,10 +138,83 @@ truncation is never exposed; a secret in the session label is redacted before th
 made; an existing dangling symlink is skipped, not followed, when allocating a session file;
 `doctor` creates nothing; missing or relative `HOME` is an error and not a panic.
 
-## Pending (M2)
+## M2
 
-| Python file | Functions | Milestone |
+Provider tests are in `crates/kellu-providers/tests/{openai,google}.rs` (a scripted local HTTP
+server, `tests/support/mod.rs`, replaces the prototype's `conftest.py` server); router tests are
+in `crates/kellu-core/tests/router.rs` (fake providers) and `router_http.rs` (real clients over
+the scripted server, in its own process because it installs a global logger). Rust names drop the
+`test_` prefix.
+
+| Python test | Rust | Status |
 |---|---|---|
-| test_providers_openai.py | 26 | M2 |
-| test_providers_google.py | 12 | M2 |
-| test_router.py | 19 | M2 |
+| test_providers_openai.test_assistant_tool_calls_and_tool_results_are_serialized | `openai::assistant_tool_calls_and_tool_results_are_serialized` | done |
+| test_providers_openai.test_chat_returns_text_and_usage | `openai::chat_returns_text_and_usage` | done |
+| test_providers_openai.test_content_given_as_parts_is_joined | `openai::content_given_as_parts_is_joined` | done |
+| test_providers_openai.test_error_object_inside_http_200_is_an_error | `openai::error_object_inside_http_200_is_an_error` | done |
+| test_providers_openai.test_error_text_never_contains_the_key_or_control_characters | `openai::error_text_never_contains_the_key_or_control_characters` | done |
+| test_providers_openai.test_http_status_maps_to_retryable_flag | `openai::http_status_maps_to_retryable_flag` | done |
+| test_providers_openai.test_invalid_tool_arguments_are_rejected | `openai::invalid_tool_arguments_are_rejected` | done |
+| test_providers_openai.test_key_with_trailing_newline_is_accepted | `openai::key_with_trailing_newline_is_accepted` | done |
+| test_providers_openai.test_malformed_key_is_rejected_to_prevent_header_injection | `openai::malformed_key_is_rejected_to_prevent_header_injection` | done |
+| test_providers_openai.test_malformed_responses_are_not_retryable | `openai::malformed_responses_are_not_retryable` | done |
+| test_providers_openai.test_missing_key_fails_before_any_network_call | `openai::missing_key_fails_before_any_network_call` | done |
+| test_providers_openai.test_oversized_response_is_rejected | `openai::oversized_response_is_rejected` | done |
+| test_providers_openai.test_provider_without_keyring_name_sends_no_authorization | `openai::provider_without_keyring_name_sends_no_authorization` | done |
+| test_providers_openai.test_redirects_are_refused_and_not_followed | `openai::redirects_are_refused_and_not_followed` | done |
+| test_providers_openai.test_request_goes_to_chat_completions_with_header_auth_only | `openai::request_goes_to_chat_completions_with_header_auth_only` | done |
+| test_providers_openai.test_stream_accumulates_tool_call_fragments | `openai::stream_accumulates_tool_call_fragments` | done |
+| test_providers_openai.test_stream_error_event_raises | `openai::stream_error_event_raises` | done |
+| test_providers_openai.test_stream_http_error_is_raised_when_iterating | `openai::stream_http_error_is_raised_when_iterating` | done |
+| test_providers_openai.test_stream_that_ends_without_done_or_finish_reason_fails | `openai::stream_that_ends_without_done_or_finish_reason_fails` | done |
+| test_providers_openai.test_stream_with_invalid_json_event_fails | `openai::stream_with_invalid_json_event_fails` | done |
+| test_providers_openai.test_stream_yields_text_then_a_final_response | `openai::stream_yields_text_then_a_final_response` | done |
+| test_providers_openai.test_timeout_is_retryable | `openai::timeout_is_retryable` | done |
+| test_providers_openai.test_tool_name_with_unsafe_characters_is_rejected | `openai::tool_name_with_unsafe_characters_is_rejected` | done |
+| test_providers_openai.test_tools_are_sent_and_tool_calls_are_parsed | `openai::tools_are_sent_and_tool_calls_are_parsed` | done |
+| test_providers_openai.test_transport_refuses_unsafe_endpoints_even_if_configured | `openai::transport_refuses_unsafe_endpoints_even_if_configured` | done |
+| test_providers_openai.test_unreachable_server_is_retryable | `openai::unreachable_server_is_retryable` | done |
+| test_providers_google.test_blocked_prompt_is_a_non_retryable_error | `google::blocked_prompt_is_a_non_retryable_error` | done |
+| test_providers_google.test_chat_uses_header_auth_and_never_puts_the_key_in_the_url | `google::chat_uses_header_auth_and_never_puts_the_key_in_the_url` | done |
+| test_providers_google.test_empty_stream_is_an_error | `google::empty_stream_is_an_error` | done |
+| test_providers_google.test_gemini_uses_a_system_instruction | `google::gemini_uses_a_system_instruction` | done |
+| test_providers_google.test_gemma_folds_the_system_message_into_the_first_user_turn | `google::gemma_folds_the_system_message_into_the_first_user_turn` | done |
+| test_providers_google.test_http_error_and_key_scrubbing | `google::http_error_and_key_scrubbing` | done |
+| test_providers_google.test_missing_key_fails_before_the_network | `google::missing_key_fails_before_the_network` | done |
+| test_providers_google.test_roles_are_mapped_and_generation_config_is_sent | `google::roles_are_mapped_and_generation_config_is_sent` | done |
+| test_providers_google.test_stream_error_event_raises | `google::stream_error_event_raises` | done |
+| test_providers_google.test_stream_uses_sse_endpoint_and_assembles_the_answer | `google::stream_uses_sse_endpoint_and_assembles_the_answer` | done |
+| test_providers_google.test_thinking_parts_are_not_part_of_the_answer | `google::thinking_parts_are_not_part_of_the_answer` | done |
+| test_providers_google.test_tools_are_not_supported_yet | `google::tools_are_not_supported_yet` | done |
+| test_router.test_all_failures_are_reported_in_order | `router::all_failures_are_reported_in_order` | done |
+| test_router.test_build_provider_rejects_unknown_kind | `ProviderKind` is an enum, so an unknown kind cannot reach the registry: it is rejected by `types::tests::unknown_or_differently_cased_names_are_rejected` and `config::tests::provider_kinds_match_the_registry`; `registry::tests::every_kind_builds_a_client_with_the_right_capabilities` checks that the exhaustive `match` covers every kind | n/a (reason) |
+| test_router.test_classify_task | `router::tests::classify_task_handles_spanish_and_english`, `keyword_lines_need_a_word_boundary`, `accents_fold_in_precomposed_and_decomposed_form` | done |
+| test_router.test_failures_are_logged_without_secrets | `router_http::failures_are_logged_without_secrets` (real client; the server echoes the key) | done |
+| test_router.test_first_provider_answers_when_it_works | `router::first_provider_answers_when_it_works` | done |
+| test_router.test_from_config_builds_one_provider_per_configured_entry | `router::from_config_builds_one_provider_per_configured_entry` | done |
+| test_router.test_missing_provider_is_recorded_and_skipped | `router::missing_provider_is_recorded_and_skipped` | done |
+| test_router.test_non_retryable_error_also_falls_back | `router::non_retryable_error_also_falls_back`, and the new `router_http::http_402_falls_back_to_the_next_provider` (chat and stream) | done |
+| test_router.test_nothing_is_tried_when_no_provider_supports_the_request | `router::nothing_is_tried_when_no_provider_supports_the_request` | done |
+| test_router.test_providers_without_tool_support_are_skipped_when_tools_are_requested | `router::providers_without_tool_support_are_skipped_when_tools_are_requested` | done |
+| test_router.test_retryable_error_falls_back_to_the_next_provider | `router::retryable_error_falls_back_to_the_next_provider` | done |
+| test_router.test_spanish_word_como_does_not_change_the_task_language | `router::tests::the_spanish_word_como_does_not_change_the_task_language` | done |
+| test_router.test_stream_does_not_fail_over_after_text_was_delivered | `router::stream_does_not_fail_over_after_text_was_delivered` | done |
+| test_router.test_stream_fails_over_before_any_text_was_delivered | `router::stream_fails_over_before_any_text_was_delivered` | done |
+| test_router.test_stream_reports_all_failures | `router::stream_reports_all_failures` | done |
+| test_router.test_stream_returns_events_from_the_first_provider | `router::stream_returns_events_from_the_first_provider` | done |
+| test_router.test_stream_that_never_finishes_counts_as_a_failure | `router::stream_that_never_finishes_counts_as_a_failure` | done |
+| test_router.test_task_selects_its_own_chain | `router::task_selects_its_own_chain` | done |
+| test_router.test_total_time_budget_stops_new_attempts | `router::total_time_budget_stops_new_attempts`, `stream_stops_starting_providers_when_the_time_budget_is_spent` | done |
+
+### Extra negative tests added in M2
+
+Redirect target is never contacted; the key never appears in the URL, in an error, in a log line
+or in `Debug` output (including when the server echoes it back, with control characters); keys
+that could inject headers (CR, LF, space, tab, DEL, non-ASCII) are refused before any request;
+unsafe endpoints (plain http to a remote host, other schemes, credentials in the URL, garbage) are
+refused by the transport even if configured; a peer that does not speak TLS is a retryable
+network error; certificate failures map to a non-retryable TLS error (classification unit-tested;
+see "Not verified" in `HANDOFF.md` for the live check); responses over the size cap, SSE lines
+over the line cap and streams over the duration cap fail with the right retryability; tool names
+with unsafe characters, non-object or invalid arguments, more than 32 calls and invalid tool-call
+indexes are malformed responses; a tool result without a call id is refused before sending.

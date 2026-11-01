@@ -12,7 +12,7 @@
 
 # Kellu: estado y decisiones (traspaso al proyecto Rust)
 
-Fecha: 2026-10-31 (actualizado al cierre de M1; el traspaso original es del 2026-10-29). Kellu se
+Fecha: 2026-11-01 (actualizado al cierre de M2; el traspaso original es del 2026-10-29). Kellu se
 reescribe en **Rust puro**. Hay dos prototipos anteriores en GitHub, ambos como **referencia de
 comportamiento** (no se mantienen):
 
@@ -60,7 +60,7 @@ activos ya están en `main` (y en GitHub), así que el logo se ve.
   manipulado podría leer una clave de `infra` y enviarla a un `base_url` ajeno.
 - `Net::HTTP` no sigue redirecciones: mantener el rechazo explícito en Rust y fijar siempre timeouts.
 - La prueba real con DeepSeek devolvió HTTP 402 (sin saldo): el router debe pasar al siguiente
-  proveedor. Añadir esa prueba.
+  proveedor. Prueba añadida en M2 (`router_http::http_402_falls_back_to_the_next_provider`).
 - La bitácora de sesiones en `docs/bitacora/` (hábito útil, se mantiene).
 - Backlog de la sesión 03: opción `--provider` en la CLI, proveedor por defecto con saldo activo y
   alinear los identificadores de modelo (Gemini `gemini-flash-latest`, Gemma `gemma-4-26b-a4b-it`,
@@ -92,7 +92,7 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | Configuración | TOML en `~/.config/kellu/config.toml` sobre `defaults.toml` embebido (`include_str!`). Sin secretos, https obligatorio (http solo localhost), claves desconocidas son error, archivo propio y sin escritura de grupo u otros, máximo 256 KiB. |
 | Keyring | Atributo `kellu=<servicio>_<clave>` y etiqueta `KELLU: <nombre>` (mismo formato que el prototipo, que usaba el atributo `kai`). Niveles deducidos del nombre: `ai_` es `provider`; `github_`, `cloudflare_`, `render_`, `desec_`, `duckdns_` son `infra`; `neon_`, `supabase_`, `mysql_` son `db`; desconocido cae en `infra`. `keyring_name = "x"` resuelve a `ai_x_api_key`. En M3 se decide entre llamar a `secret-tool` (sin dependencia nueva, compatible) o un crate de Secret Service con atributos arbitrarios (permitiría `kellu keys list`). |
 | Proveedores por defecto | openrouter, deepseek (compatibles con OpenAI); google (`gemini-flash-latest`, alias móvil); gemma_direct (`gemma-4-26b-a4b-it`, clave y cuota propias); grok (`grok-4.3`, base `https://api.x.ai/v1`). Google usa `v1beta`. Rutas: general = gemma_direct, google, deepseek, openrouter; code = deepseek, openrouter; explain = google, openrouter. Presupuesto total del router: 120 s. |
-| HTTP | Candidato: `ureq` con `rustls`. Verificar en M2 que permita cero redirecciones, timeouts y lectura en streaming, que interprete las URL igual que `http::Uri` (la validación de M1 usa ese parser) y decidir las raíces de certificados. |
+| HTTP | **`ureq` 3.5 con `rustls`** (decidido y verificado en M2): cero redirecciones (`max_redirects(0)` devuelve el 3xx sin seguirlo), timeouts por operación y global, streaming incremental, tope de cuerpo también con `chunked`, y recibe `http::Request`, así que la URL la parsea nuestro `http::Uri`. Proveedor criptográfico `ring` (no es Rust puro: C y ensamblador). Raíces de certificados: **Mozilla incluidas** (`webpki-roots`), no el almacén del sistema: una CA privada o un proxy que intercepta TLS no son de confianza (revisar con `platform-verifier` si hace falta). Los endpoints https respetan `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` del entorno (el proxy solo ve un túnel `CONNECT`); los endpoints `http` (solo localhost) **nunca** usan proxy: `ureq` no exime a localhost por sí mismo y un proxy vería la clave en claro (hallazgo de la revisión independiente; prueba `proxy::plain_http_ignores_the_proxy_environment`). |
 | Sandbox | bubblewrap con `argv` como lista, sin shell. Política de versión **B**: se permiten versiones anteriores a 0.12.0 con advertencia (CVE-2026-87766), porque el diseño nunca crea puntos de montaje dentro del árbol del proyecto; modo estricto opcional. Ubuntu 24.04 trae 0.9.0 y su paquete retiró el parche en una actualización. Landlock (crate `landlock`) como respaldo posterior. |
 | Autorización | Lectura por proyecto (solo lectura). Escritura nunca permanente: el modelo propone diffs con hashes, el usuario elige denegar, parcial o completo, y **solo el núcleo aplica**. Ningún sandbox escribe en el proyecto real; las herramientas que escriben trabajan sobre una copia (staging) y su resultado vuelve como otra propuesta. Un solo `Grant` deriva la política de rutas y los montajes (prueba con `proptest`). Auditoría JSONL append-only (0600) con cadena de hashes. Acceso a archivos por descriptores (`cap-std` o `rustix openat2`). |
 | LSP en Kate | 0.1.0: hover y completion manual. 0.2.0: diagnósticos y code actions (una acción por hunk más "aplicar todo"). Chat, vista previa de diffs y texto fantasma necesitan otros frontends. Raíz igual a `$HOME`, sus ancestros o `/` se rechaza. La configuración de `.kateproject` es no confiable y solo puede endurecer. Candidato: `lsp-server` y `lsp-types`. |
@@ -104,7 +104,7 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 |---|---|---|
 | M0 | Hecho | **Hecho.** Workspace, toolchain fijada, `deny.toml`, CI, `kellu --version`, `doctor`, rutas XDG, archivos privados, errores, test de arquitectura |
 | M1 | Hecho | **Hecho (paridad).** Config TOML estricta, logging privado con gancho de redacción, sesiones, `config path|check|show`, comprobación de config en `doctor` |
-| M2 | Hecho | **Siguiente (paridad).** Proveedores (OpenAI-compatible con streaming y herramientas, Google), transporte HTTP endurecido, router con respaldo |
+| M2 | Hecho | **Hecho (paridad).** Proveedores (OpenAI-compatible con streaming y herramientas, Google), transporte HTTP endurecido, router con respaldo |
 | M3 | No empezado | Vault de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
 | M4 | No empezado | Sandbox: política derivada del `Grant`, copia de trabajo, límites de recursos, sondeo de bubblewrap en `doctor`, tests de escape |
 | M5 | No empezado | Registro de herramientas con riesgo obligatorio, propuesta y aplicación de diffs, archivos, shell en sandbox, git de lectura; escrituras de git y gh en el host con confirmación |
@@ -154,11 +154,24 @@ perfiles de hardware y MCP.
 - Respuestas en español, breves y pragmáticas; código, documentación y commits en inglés.
 
 ## 7. No verificado
-Llamadas reales a las APIs de los proveedores; las capacidades exactas de `ureq` y `rustls` para
-nuestras reglas; comportamiento de bubblewrap como usuario sin privilegios en el equipo del usuario
-(las pruebas se hicieron como root); los comportamientos de Kate señalados en la sección 5; `cargo
-audit` (no se pudo instalar a tiempo); el CI en GitHub (no se ha ejecutado); las pruebas de
-"archivo o directorio de otro usuario" solo corren cuando los tests se ejecutan como root.
+- Llamadas reales a las APIs de los proveedores (ninguna se hizo: no hay claves ni red hacia ellos
+  en el entorno de verificación) y los identificadores de modelo de `defaults.toml`.
+- Handshake TLS contra servidores reales y las raíces `webpki-roots` frente a los certificados
+  reales de OpenRouter, DeepSeek, Google y xAI. Lo que sí se comprobó a mano: un servidor
+  `openssl s_server` con certificado autofirmado es rechazado, y `ureq` lo entrega como
+  `io::Error` de tipo `InvalidData` con el error de `rustls` dentro; el transporte lo clasifica
+  como error TLS no reintentable (clasificación probada con una prueba unitaria, no con un
+  servidor TLS en los tests, que dependería de `openssl`).
+- Tiempo de compilación y tamaño del binario con `ring` y `ureq` (no medidos); `ring` en la
+  arquitectura y el compilador del equipo del usuario.
+- Comportamiento de `ureq` con proxies reales del entorno del usuario en https (solo se probó que
+  los endpoints `http` los ignoran, con un proxy muerto).
+- Que `secrecy` borre todas las copias de una clave: las que `ureq` y `http` hacen al armar la
+  cabecera no se borran.
+- Comportamiento de bubblewrap como usuario sin privilegios en el equipo del usuario (las
+  pruebas se hicieron como root); los comportamientos de Kate señalados en la sección 5; el CI en
+  GitHub (no se ha ejecutado); las pruebas de "archivo o directorio de otro usuario" solo corren
+  cuando los tests se ejecutan como root.
 
 ## 8. Archivos de este traspaso
 `HANDOFF.md`, `README.md`, `README.es.md`, `SECURITY.md`, `CHANGELOG.md`, `LICENSE`,
@@ -167,7 +180,71 @@ audit` (no se pudo instalar a tiempo); el CI en GitHub (no se ha ejecutado); las
 instrucciones del proyecto y no está en el repositorio. El prototipo de Python completo
 (`kellu-M2.zip`) es para la rama `original-python`.
 
-## 9. Estado al cierre de M1 (2026-10-31)
+## 9. Estado al cierre de M2 (2026-11-01)
+
+**Verificado** (Rust 1.91.1 instalado por apt; rustup no alcanza `static.rust-lang.org` desde el
+entorno de verificación): `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
+-- -D warnings`, `cargo test --workspace --locked` (237 tests, 0 fallos; también con un proxy muerto en el entorno), `cargo deny check`
+(advisories, bans, licenses y sources en verde) y `cargo audit` (78 crates, sin hallazgos). La
+paridad (137 de 137 funciones de prueba) se comprobó con un script: cada función de
+`python-tests.txt` está en `PARITY.md` y cada test Rust citado existe. **No verificado:** ver la
+sección 7.
+
+**Hecho en M2:** `kellu-providers` (tipos, trait `Provider`, transporte HTTP, cliente
+OpenAI-compatible con streaming y herramientas, cliente Google con Gemini y Gemma, registro),
+`kellu-core::router` (`classify_task`, respaldo en `chat` y `stream`, presupuesto de tiempo con reloj
+inyectable), `KelluError::AllProvidersFailed`, servidor de prueba con guion y tests de extremo a
+extremo (incluida la prueba nueva de HTTP 402 con respaldo, en chat y en streaming).
+
+**Decisiones tomadas en M2 (con motivo):**
+- `ureq` 3.5 con la característica `rustls` (ver sección 2, fila HTTP). Árbol normal de
+  dependencias: de 30 a 52 crates. `deny.toml` admite `CDLA-Permissive-2.0` por la lista de CA.
+- `serde_json` como dependencia normal, sin `serde` derive: las cargas se arman con `json!` y se
+  leen como `Value`; los errores nunca repiten contenido de la respuesta sin pasar por `scrub`.
+- `secrecy` para las claves (sin `zeroize` directo); el proveedor recibe un `KeyLookup` inyectado
+  y consulta la clave en cada petición, sin guardarla. La bóveda real es M3.
+- `Message` es un enum (un resultado de herramienta siempre lleva `call_id`); los argumentos de
+  una llamada son un `Map`, siempre un objeto JSON.
+- `EventStream` es un iterador perezoso de `Result`: la petición sale en el primer `next()` y todo
+  fallo, incluido un estado HTTP de error, es un ítem `Err` (igual que el generador del prototipo).
+- Plegado de acentos con una tabla explícita más descarte de marcas combinantes, sin
+  `unicode-normalization`. `classify_task` conserva la semántica de Python (por ejemplo, un
+  prompt que empieza por `¿` no cuenta como prefijo de explicación).
+- Servidor de prueba propio y mínimo (`TcpListener`) en lugar de `tiny_http` (sin
+  mantenimiento desde 2022).
+- Desviaciones de paridad documentadas en `PARITY.md`: tope global de 600 s también para las
+  peticiones no `stream` (el prototipo solo lo ponía a los streams), claves solo con ASCII
+  imprimible, raíces TLS incluidas en lugar del almacén del sistema.
+- `kellu-core` depende de `kellu-providers` (ya permitido). Dev-dependencies nuevas en `kellu-core`:
+  `secrecy` y `serde_json`.
+
+**Revisión independiente (un revisor sin contexto leyó el transporte y el router):** corregido el
+proxy en endpoints `http`, los ids de herramienta duplicados o inseguros, las etiquetas de
+modelo y motivo de fin sin sanear y el registro del fallo tras texto entregado. **Abiertos, sin
+corregir** (decidir):
+- Google acepta como completo un stream que termina limpiamente sin `finishReason` (el cliente
+  OpenAI-compatible sí lo rechaza). Es la semántica del prototipo; endurecerlo puede dar falsos
+  errores si la API real omite el campo en algún caso, y no se pudo comprobar sin llamadas reales.
+- El presupuesto total del router solo se revisa antes de empezar cada proveedor: un stream en
+  curso puede durar hasta el tope de 600 s por intento (igual que el prototipo).
+- Un servidor que repite la clave en el cuerpo de error más allá de los 4096 bytes leídos deja un
+  prefijo de la clave sin reemplazar; el depurado es por coincidencia exacta y no toca claves de
+  menos de 8 caracteres.
+- Un SSE con solo `\r` como separador de línea falla cerrado ("stream line too long").
+
+**Aún no se puede usar desde la CLI:** no existe la bóveda (M3), así que `kellu` no llama a ningún
+proveedor; `kellu config show` ya lista proveedores y rutas.
+
+**Siguiente: M3.** Orden sugerido: (1) decidir `secret-tool` frente a un crate de Secret Service
+(sección 2, fila Keyring) probando contra el esquema real `kellu=<servicio>_<clave>`;
+(2) `kellu-security`: bóveda con niveles y `keyring_name` restringido a `ai_*`, entorno depurado,
+deny globs, redactor v1 (cablearlo al gancho de `log` y `session`), permisos por riesgo, scope y
+`Grant`, auditoría; (3) `kellu keys list|set|rm|cleanup-legacy` leyendo secretos por stdin sin
+eco; (4) `kellu providers test`, conectando la bóveda con `KeyLookup`. Antes de M3, decidir si se
+mantiene `ring` y las raíces incluidas (sección 2, fila HTTP) y el lema del encabezado
+("built with Ruby & Rust").
+
+## 9.1 Estado al cierre de M1 (2026-10-31)
 
 **Verificado:** `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`
 y `cargo test --workspace --locked` (147 tests) en verde con Rust 1.91.1; `cargo deny check` en
@@ -201,15 +278,3 @@ crates `kellu-common` (app, error, net, paths, text, utc), `kellu-core` (config,
 **Nota sobre el lema del encabezado:** el lema pedido dice "built with Ruby & Rust", pero el
 proyecto es Rust puro (el prototipo Ruby es solo referencia). Se aplicó tal cual; conviene decidir si
 se cambia a "built in Rust" antes de publicar.
-
-**Siguiente: M2 (paridad).** Orden sugerido:
-1. Verificar `ureq` + `rustls` contra las reglas (cero redirecciones, timeouts, streaming, tope de
-   cuerpo de 8 MiB y de línea SSE de 1 MiB, parseo de URL igual que `http::Uri`).
-2. `secrecy`/`zeroize` para las claves; `serde` y `serde_json` para las cargas de proveedores.
-3. `kellu-providers`: trait `Provider`, cliente OpenAI-compatible (streaming y herramientas), Google
-   (Gemini y Gemma), registro de tipos (el test `provider_kinds_match_the_registry` debe seguir
-   verde) y errores con `retryable`.
-4. Servidor de prueba con guion (`tiny_http` o `TcpListener`) y las 57 funciones pendientes del
-   registro (26 OpenAI, 12 Google, 19 router), incluida la nueva prueba de HTTP 402 con respaldo.
-5. `kellu-core: router` con `classify_task` (decidir plegado de acentos) y presupuesto de tiempo; la
-   salida de `config show` ya lista proveedores y rutas.

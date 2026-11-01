@@ -16,7 +16,7 @@
 
 **Secure and modular AI assistant for the Kate editor that thinks before spending tokens.**
 
-> **Status: pre-0.1.0.** Being rebuilt in Rust with a security-first design. Milestones M0 and M1 are done (workspace, strict configuration, private logs and sessions, `kellu doctor`, `kellu config`); everything from M2 on is still design. The earlier Python and Ruby prototypes live on the `original-python` and `kellu-prototype-ruby` branches and are the behavioral reference for the port. APIs, commands and configuration will change. Not yet released. Security model: see [SECURITY.md](SECURITY.md).
+> **Status: pre-0.1.0.** Being rebuilt in Rust with a security-first design. Milestones M0 to M2 are done (workspace, strict configuration, private logs and sessions, `kellu doctor`, `kellu config`, model providers and the router, all with parity against the prototype); everything from M3 on is still design. There is no key vault yet, so the providers cannot be used from the command line. The earlier Python and Ruby prototypes live on the `original-python` and `kellu-prototype-ruby` branches and are the behavioral reference for the port. APIs, commands and configuration will change. Not yet released. Security model: see [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -104,8 +104,8 @@ kellu/
 ├── LICENSE  README.md  README.es.md  SECURITY.md  CHANGELOG.md  HANDOFF.md
 ├── crates/
 │   ├── kellu-common/      # errors, XDG paths, private files, text helpers, endpoint rules, UTC stamps
-│   ├── kellu-providers/   # provider types today; OpenAI-compatible, Google, HTTP transport, registry in M2
-│   ├── kellu-core/        # config, log, session (router in M2; no side effects at startup)
+│   ├── kellu-providers/   # types, HTTP transport, OpenAI-compatible and Google clients, registry
+│   ├── kellu-core/        # config, log, session, router (no side effects at startup)
 │   ├── kellu-security/    # (M3) vault, redaction, deny globs, permissions, scope, grants, audit
 │   ├── kellu-sandbox/     # (M4) backend trait, bubblewrap, policy, staging
 │   ├── kellu-projects/    # (M5) discovery, stack detection, scopes
@@ -116,7 +116,7 @@ kellu/
 └── packaging/             # desktop entry
 ```
 
-Crates are added **when their milestone starts**, not before. Present today: `kellu-common` (M0), `kellu-core` and `kellu-providers` (M1; the latter holds only types until M2). Still to come: `kellu-security` (M3), `kellu-sandbox` (M4), `kellu-tools` and `kellu-projects` (M5), `kellu-frontends` (M6), and later a `kellu-memory` crate (0.4.0, SQLite and optional pgvector). The decision cascade lives in `kellu-core` (0.2.0 to 0.4.0) and the MCP client in `kellu-tools` (0.5.0). The dependency direction is enforced by Cargo (a cycle does not compile) and by a test over `cargo metadata`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PORTING.md](docs/PORTING.md).
+Crates are added **when their milestone starts**, not before. Present today: `kellu-common` (M0), `kellu-core` and `kellu-providers` (M1; clients, transport and router since M2). Still to come: `kellu-security` (M3), `kellu-sandbox` (M4), `kellu-tools` and `kellu-projects` (M5), `kellu-frontends` (M6), and later a `kellu-memory` crate (0.4.0, SQLite and optional pgvector). The decision cascade lives in `kellu-core` (0.2.0 to 0.4.0) and the MCP client in `kellu-tools` (0.5.0). The dependency direction is enforced by Cargo (a cycle does not compile) and by a test over `cargo metadata`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PORTING.md](docs/PORTING.md).
 
 ## Quick start
 
@@ -199,7 +199,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 
 - [x] **M0** Repository, Cargo workspace, XDG paths, CI, tests, license, `SECURITY.md`
 - [x] **M1** Config with packaged defaults, errors, logging, sessions; no side effects at startup
-- [ ] **M2** Providers: OpenAI-compatible client (streaming, tools), Google, router with timeouts and fallback
+- [x] **M2** Providers: OpenAI-compatible client (streaming, tools), Google, router with timeouts and fallback
 - [ ] **M3** `kellu keys` with tiers and migration, scrubbed environment, deny globs, redaction v1, risk-based permissions
 - [ ] **M4** Sandbox: interface, bubblewrap backend, policies, `kellu doctor`, escape tests
 - [ ] **M5** Tools with generated schemas and risk levels: files, sandboxed shell, read-only git; git/gh writes on host with confirmation

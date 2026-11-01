@@ -16,7 +16,7 @@ Status: the project is being rewritten in Rust. The Python prototype (milestones
 cases) is the **behavioral reference**: its designs, defaults and tests are the specification.
 Behavior parity comes first; new work (M3 onwards) starts only after parity.
 
-**Progress: M0 and M1 are ported (80 of 137 test functions mapped); M2 is next.** The register is
+**Progress: M0 to M2 are ported (137 of 137 test functions mapped); parity is reached and new work starts at M3.** The register is
 [porting/PARITY.md](porting/PARITY.md).
 
 ## Branches
@@ -54,11 +54,11 @@ XDG paths, and the brand notes.
 | `core/config.py`, `defaults.toml` | `kellu-core: config` | `toml` read as a table and validated by hand, so errors name the key path and never echo a value; the secret-key rejection and the numeric limits are kept. **Done (M1).** |
 | `core/log.py` | `kellu-core: log` | `log` facade with a private rotating writer; redaction and control-character stripping on the final string. **Done (M1).** |
 | `core/session.py` | `kellu-core: session` | Same Markdown format and state machine; entry kinds are an enum. **Done (M1).** |
-| `providers/types.py` | `kellu-providers: types` | Provider configuration types only so far. **M1; the rest in M2.** |
-| `core/router.py` | `kellu-core: router` | `classify_task` needs accent folding (Spanish); decide between `unicode-normalization` and a small fold table. **M2.** |
-| `providers/*` | `kellu-providers: types, http, openai_compat, google, registry` | `Provider` trait; streaming as an iterator. **M2.** |
+| `providers/types.py` | `kellu-providers: types` | Configuration types (M1); messages, requests, responses and stream events as enums and plain structs. **Done (M2).** |
+| `core/router.py` | `kellu-core: router` | `classify_task` folds accents with a small explicit table (no `unicode-normalization`); `Router::chat` and `Router::stream` with fallback, tool-support skipping and a time budget with an injectable clock. **Done (M2).** |
+| `providers/*` | `kellu-providers: types, base, common, http, stream, openai_compat, google, registry` | `Provider` trait; streaming as a lazy iterator of `Result`. **Done (M2).** |
 | `cli.py`, `doctor.py` | `kellu` (binary crate) | `clap`; the Python version check disappears. `config path|check|show` and the configuration check in `doctor` done in M1. |
-| `tests/conftest.py` scripted server | `kellu-providers/tests/support` | `tiny_http` or a small `TcpListener` server. **M2.** |
+| `tests/conftest.py` scripted server | `kellu-providers/tests/support` | A small `TcpListener` server (no `tiny_http`: unmaintained since 2022). **Done (M2).** |
 | `test_architecture.py` | workspace test | Reads `cargo metadata` and asserts the allowed internal dependency edges. **Done (M0).** |
 
 ## Behaviors that must be preserved
@@ -120,8 +120,7 @@ derive; URLs are parsed with `http::Uri`.
 - Rewriting M0 to M2. Mitigation: the designs are done and the tests are the specification.
 - Compile times and dependency footprint. Keep crates small, set `default-features = false`, and
   justify every new crate.
-- Capabilities to verify in the milestone that needs them: `ureq` (zero redirects, timeouts,
-  streaming reads, and whether it parses URLs like the `http` crate), `rustls` root certificates.
+- Verified in M2: `ureq` 3.5 refuses redirects with `max_redirects(0)` (the 3xx is returned and never followed), has per-operation and global timeouts, streams incrementally, enforces body limits also for chunked bodies, and takes `http::Request`, so the URL is parsed by the same `http::Uri` we validate with. Still open: `ureq` uses `ring` (C and assembly, not pure Rust) and reads proxy variables from the environment (used for https only; see `PARITY.md`).
 
 ## Dependencies
 
@@ -136,23 +135,22 @@ Chosen so far (each is justified in one line in the workspace `Cargo.toml`):
 | Configuration | `toml` (parse only) | M1 | Read as a table and validated by hand; no `serde` derive in Kellu's own code (the `toml` crate's `serde` feature is needed to read into a table). |
 | Logging | `log` plus an own writer | M1 | |
 | Time | own `kellu-common::utc` | M1 | Replaces the proposed `time`: logs use UTC, so no time-zone database is needed. |
-| Tests | `tempfile`, `serde_json` (architecture test only) | M0 | |
+| Tests | `tempfile` | M0 | |
+| Provider payloads | `serde_json` | M2 | Values built with `json!` and parsed as `Value`; no `serde` derive. |
+| HTTP and TLS | `ureq` (`rustls` feature only) | M2 | 22 more crates in the normal tree, including `ring` and `webpki-roots`; `deny.toml` allows `CDLA-Permissive-2.0` for the bundled CA list. |
+| Secrets | `secrecy` (brings `zeroize`) | M2 | No `Debug` output, wiped on drop. Copies made inside `ureq` and `http` while a header is built are not wiped. |
 
 Still proposed (confirm and justify per milestone):
 
 | Purpose | Crate | Milestone |
 |---|---|---|
-| Serialization of provider payloads | `serde`, `serde_json` | M2 |
-| HTTP and TLS | `ureq` with `rustls` | M2 |
-| Secrets | `secrecy`, `zeroize` | M2 |
-| Unicode folding for the router | `unicode-normalization` or a small fold table | M2 |
 | Capability-based file access | `cap-std` | M3 |
 | Hashing | `sha2` | M3 |
 | Diffs | `similar`, own or `diffy` applier | M5 |
 | Gitignore | `ignore` | M3 or M5 |
 | LSP | `lsp-server`, `lsp-types` | M6 |
 | Sandbox fallback | `landlock` | later |
-| Tests | `tiny_http`, `proptest`, `assert_cmd`, `predicates`, `insta` | per milestone |
+| Tests | `proptest`, `assert_cmd`, `predicates`, `insta` | per milestone |
 | CI tooling | `cargo-deny`, `cargo-audit` | M0 |
 
 Keyring access in M3: either keep calling `secret-tool` (no new dependency, compatible with the
@@ -190,8 +188,8 @@ and `kellu-providers` (types only); M2 fills `kellu-providers`; M3 `kellu-securi
   locally; the CI workflow has not run on GitHub yet.)
 - [x] **M1:** configuration with the same `defaults.toml`, logging, sessions, text helpers,
   `kellu config path|check|show`.
-- [ ] **M2:** providers, the router, the scripted-server tests, provider listing in `config show`.
-- [ ] **Gate:** every entry in `docs/porting/python-tests.txt` is mapped in `PARITY.md`.
+- [x] **M2:** providers (OpenAI-compatible with streaming and tools, Google), the hardened HTTP transport, the router with fallback (including HTTP 402), the scripted-server tests. Provider listing in `config show` already existed from M1.
+- [x] **Gate:** every entry in `docs/porting/python-tests.txt` is mapped in `PARITY.md` (137 of 137, checked mechanically).
 
 ## Verification environment
 
