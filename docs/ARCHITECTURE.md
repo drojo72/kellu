@@ -5,7 +5,7 @@
   </picture>
 </p>
 <p align="center">
-    <em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em>
+    <em>Local-first, modular AI assistant & LSP CLI built with Rust</em>
 </p>
 
 ---
@@ -29,11 +29,30 @@ dependency rule that tests enforce (`kellu/tests/architecture.rs`).
 | `kellu-frontends` | Terminal REPL, Kate LSP, (later) gateway, ACP, MCP server. | all layers above and `core` |
 | `kellu` (binary) | CLI and `doctor`. | everything |
 
+```mermaid
+flowchart TD
+    bin["kellu (binary)<br/>CLI · doctor"]:::done
+    fe["kellu-frontends<br/>REPL · LSP · M6"]:::todo
+    core["kellu-core<br/>config · log · session · router"]:::done
+    tools["kellu-tools · M5"]:::todo
+    proj["kellu-projects · M5"]:::todo
+    prov["kellu-providers<br/>transport · OpenAI-compat · Google"]:::done
+    sbx["kellu-sandbox · M4"]:::todo
+    sec["kellu-security · M3"]:::todo
+    com["kellu-common<br/>errors · paths · text · net"]:::done
+    bin --> fe --> core
+    core --> tools --> sbx --> sec --> com
+    core --> prov --> com
+    core --> proj --> com
+    tools --> sec
+    tools --> com
+    sbx --> com
+    classDef done fill:#14253D,stroke:#C8A66A,color:#F4F0E7
+    classDef todo fill:#F4F0E7,stroke:#B87355,color:#14253D,stroke-dasharray:4 3
 ```
-frontends -> core -> tools -> sandbox -> security -> common
-                \-> providers -> common
-                \-> projects  -> common
-```
+
+Solid dark nodes exist today (M0 to M2); dashed nodes are created when their milestone starts.
+In the code the binary calls `core` directly until `frontends` exists (M6).
 
 One edge goes beyond the earlier Python layering: `sandbox -> security`, because the sandbox
 mounts are derived from the `Grant` (see `design/permissions-and-sandbox.md`) and the `Grant`
@@ -76,6 +95,53 @@ kellu/
 ├── docs/                    ARCHITECTURE.md, PORTING.md, porting/, design/
 └── packaging/               desktop entry
 ```
+
+## Status
+
+| Milestone | State | Crates touched |
+|---|---|---|
+| M0 | done | `kellu-common`, `kellu` |
+| M1 | done | `kellu-common`, `kellu-core`, `kellu-providers` (types) |
+| M2 | done, behavior parity 137/137 with the Python prototype (`porting/PARITY.md`) | `kellu-providers`, `kellu-core` (router), `kellu-common` (`AllProvidersFailed`) |
+| M3 | next | `kellu-security` |
+| M4 to M7 | planned | see Layout |
+
+## Providers and router (M2)
+
+`kellu-core::router` picks the provider chain for a task and walks it; `kellu-providers` owns the
+wire format and the transport. Providers receive their configuration and a `KeyLookup`; they never
+read either themselves.
+
+```mermaid
+flowchart TD
+    P["User prompt"] --> C["classify_task"]
+    C --> R["Configured route<br/>(fallback chain)"]
+    R --> N{"Next provider"}
+    N -- "not built, or tools<br/>unsupported" --> N
+    N -- "time budget exhausted<br/>or chain empty" --> F["AllProvidersFailed<br/>(per-provider failures)"]
+    N -- "usable" --> T["Transport<br/>https, no redirects, size caps"]
+    T --> X{"Result"}
+    X -- "valid response" --> OK["Return to caller"]
+    X -- "402, 429, 5xx,<br/>network, TLS" --> L["Log without secrets"]
+    L --> S{"Stream already<br/>delivered text?"}
+    S -- "no" --> N
+    S -- "yes" --> E["Error to user<br/>(no failover mid-answer)"]
+    classDef ok fill:#14253D,stroke:#C8A66A,color:#F4F0E7
+    classDef bad fill:#F4F0E7,stroke:#B87355,color:#14253D
+    class OK ok
+    class F,E bad
+```
+
+Transport rules (`kellu-providers`, enforced by tests in `crates/kellu-providers/tests/`):
+
+- Keys travel only in headers, wrapped in `SecretString`; `Debug` is redacted and errors are
+  scrubbed before they reach logs or users.
+- Redirects are refused. `https` is required; plain `http` is accepted only for localhost and uses
+  a separate agent that never reads proxy environment variables.
+- Caps: 8 MiB response body, 1 MiB per SSE line, 600 s overall. TLS certificate failures are not
+  retried.
+- A failure that happens after streamed text reached the user is reported, not retried, so an
+  answer is never silently mixed from two models.
 
 ## Where future features go
 

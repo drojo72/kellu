@@ -15,3 +15,6 @@ credentials*
 .idea/
 .vscode/
 .DS_Store
+
+# Local TMP and Error notes
+.local_test_reg/

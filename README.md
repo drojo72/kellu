@@ -5,7 +5,7 @@
   </picture>
 </p>
 <p align="center">
-    <em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em>
+    <em>Local-first, modular AI assistant & LSP CLI built with Rust</em>
 </p>
 
 ---
