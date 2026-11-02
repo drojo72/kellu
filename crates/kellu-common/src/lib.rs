@@ -13,4 +13,4 @@ pub mod paths;
 pub mod text;
 pub mod utc;
 
-pub use error::{KelluError, ProviderError, Result};
+pub use error::{KelluError, ProviderError, ProviderFailure, Result};

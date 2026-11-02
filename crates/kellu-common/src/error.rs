@@ -21,6 +21,14 @@ pub enum KelluError {
     /// A model provider call failed.
     #[error(transparent)]
     Provider(#[from] ProviderError),
+    /// Every provider in the chain for a task failed or was skipped.
+    #[error("all providers failed for task '{task}': {}", summarize(failures))]
+    AllProvidersFailed {
+        /// The task type that was routed.
+        task: String,
+        /// One entry per provider tried or skipped, in chain order.
+        failures: Vec<ProviderFailure>,
+    },
     /// An I/O operation failed.
     #[error("{}: {source}", path.display())]
     Io {
@@ -30,6 +38,30 @@ pub enum KelluError {
         #[source]
         source: io::Error,
     },
+}
+
+/// Why one provider in a chain did not produce an answer. Messages never contain secrets.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderFailure {
+    /// Provider name from the configuration.
+    pub provider: String,
+    /// HTTP status, or 0 when there is none.
+    pub status: u16,
+    /// Scrubbed reason.
+    pub message: String,
+    /// Whether another attempt might have succeeded.
+    pub retryable: bool,
+}
+
+fn summarize(failures: &[ProviderFailure]) -> String {
+    if failures.is_empty() {
+        return "empty chain".to_owned();
+    }
+    failures
+        .iter()
+        .map(|failure| format!("{}: {}", failure.provider, failure.message))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 impl KelluError {
@@ -161,6 +193,29 @@ mod tests {
         let err: KelluError = ProviderError::new("x", "boom").into();
         assert!(matches!(err, KelluError::Provider(_)));
         assert_eq!(err.to_string(), "[x] boom");
+    }
+
+    #[test]
+    fn all_providers_failed_lists_every_failure_in_order() {
+        let failure = |provider: &str, message: &str| ProviderFailure {
+            provider: provider.to_owned(),
+            status: 0,
+            message: message.to_owned(),
+            retryable: true,
+        };
+        let error = KelluError::AllProvidersFailed {
+            task: "code".to_owned(),
+            failures: vec![failure("a", "boom"), failure("b", "bust")],
+        };
+        assert_eq!(
+            error.to_string(),
+            "all providers failed for task 'code': a: boom; b: bust"
+        );
+        let empty = KelluError::AllProvidersFailed {
+            task: "x".to_owned(),
+            failures: Vec::new(),
+        };
+        assert!(empty.to_string().ends_with("empty chain"));
     }
 
     #[test]

@@ -5,7 +5,7 @@
   </picture>
 </p>
 <p align="center">
-    <em>Local-first, modular AI assistant & LSP CLI built with Ruby & Rust</em>
+    <em>Local-first, modular AI assistant & LSP CLI built with Rust</em>
 </p>
 
 ---
@@ -97,7 +97,7 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | Autorización | Lectura por proyecto (solo lectura). Escritura nunca permanente: el modelo propone diffs con hashes, el usuario elige denegar, parcial o completo, y **solo el núcleo aplica**. Ningún sandbox escribe en el proyecto real; las herramientas que escriben trabajan sobre una copia (staging) y su resultado vuelve como otra propuesta. Un solo `Grant` deriva la política de rutas y los montajes (prueba con `proptest`). Auditoría JSONL append-only (0600) con cadena de hashes. Acceso a archivos por descriptores (`cap-std` o `rustix openat2`). |
 | LSP en Kate | 0.1.0: hover y completion manual. 0.2.0: diagnósticos y code actions (una acción por hunk más "aplicar todo"). Chat, vista previa de diffs y texto fantasma necesitan otros frontends. Raíz igual a `$HOME`, sus ancestros o `/` se rechaza. La configuración de `.kateproject` es no confiable y solo puede endurecer. Candidato: `lsp-server` y `lsp-types`. |
 | Marca | Azul marino `#14253D`, dorado `#C8A66A`, cobre `#B87355`, marfil `#F4F0E7`. Símbolo: geometría abstracta basada en figuras de textiles mapuches. Pendiente: versión simplificada para 16 y 24 px, rediseño vectorial propio, tipografía libre modificada por el usuario con registro de licencia (`docs/brand/PROVENANCE.md`). Dorado sobre marfil no alcanza contraste (2.0:1): usar un dorado más oscuro en fondos claros. Terminal: niveles ASCII `<*>`, Unicode `‹ ◆ ›`, color; respetar `NO_COLOR`, `TERM=dumb` y locale no UTF-8 (`kellu-frontends`, módulo `theme`, M6). |
-| Encabezado de los `.md` | Todos los `.md` llevan el mismo encabezado con el logo (`/assets/branding/svg/kellu-logo-color-{dark,light}.svg`) y el lema "Local-first, modular AI assistant & LSP CLI built with Ruby & Rust". Ver la nota sobre el lema en la sección 9. |
+| Encabezado de los `.md` | Todos los `.md` llevan el mismo encabezado con el logo (`/assets/branding/svg/kellu-logo-color-{dark,light}.svg`) y el lema "Local-first, modular AI assistant & LSP CLI built with Rust" (decidido: sin "Ruby &"). |
 
 ## 3. Hitos
 | Hito | Prototipo Python (`original-python`) | Rust (`main`) |
@@ -241,8 +241,7 @@ proveedor; `kellu config show` ya lista proveedores y rutas.
 deny globs, redactor v1 (cablearlo al gancho de `log` y `session`), permisos por riesgo, scope y
 `Grant`, auditoría; (3) `kellu keys list|set|rm|cleanup-legacy` leyendo secretos por stdin sin
 eco; (4) `kellu providers test`, conectando la bóveda con `KeyLookup`. Antes de M3, decidir si se
-mantiene `ring` y las raíces incluidas (sección 2, fila HTTP) y el lema del encabezado
-("built with Ruby & Rust").
+mantiene `ring` y las raíces incluidas (sección 2, fila HTTP).
 
 ## 9.1 Estado al cierre de M1 (2026-10-31)
 
@@ -275,6 +274,4 @@ crates `kellu-common` (app, error, net, paths, text, utc), `kellu-core` (config,
 - Tests del `log` global en su propio proceso (`kellu-core/tests/logging.rs`), porque la fachada
   `log` tiene un único logger global.
 
-**Nota sobre el lema del encabezado:** el lema pedido dice "built with Ruby & Rust", pero el
-proyecto es Rust puro (el prototipo Ruby es solo referencia). Se aplicó tal cual; conviene decidir si
-se cambia a "built in Rust" antes de publicar.
+**Lema del encabezado:** resuelto; el lema es "built with Rust" (sin "Ruby &") en todos los `.md`.

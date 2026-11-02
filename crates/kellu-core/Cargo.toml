@@ -16,6 +16,8 @@ toml.workspace = true
 
 [dev-dependencies]
 rustix.workspace = true
+secrecy.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 
 [lints]
