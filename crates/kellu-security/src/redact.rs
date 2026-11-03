@@ -287,6 +287,12 @@ fn looks_high_entropy(token: &str) -> bool {
     if token.matches('/').count() > 2 || token.matches('.').count() > 2 {
         return false;
     }
+    // Lowercase words joined by `-` or `/` are names (model ids such as
+    // `meta-llama/llama-4-maverick-17b-128e-instruct`), not secrets: random secrets are
+    // mixed-case or have no separators. Well-known prefixes are still caught earlier.
+    if !token.bytes().any(|b| b.is_ascii_uppercase()) && token.contains(['-', '/']) {
+        return false;
+    }
     let has_digit = token.bytes().any(|b| b.is_ascii_digit());
     let has_letter = token.bytes().any(|b| b.is_ascii_alphabetic());
     if !(has_digit && has_letter) {
@@ -447,9 +453,22 @@ mod tests {
             "fn very_long_function_name_that_does_things(arg: u32) -> u32",
             "2026-11-02T09:47:00Z",
             "kellu-security",
+            "meta-llama/llama-4-maverick-17b-128e-instruct",
+            "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+            "cognitivecomputations/dolphin-mistral-24b-venice-edition",
+            "qwen/qwen3-coder-480b-a35b-instruct",
+            "openrouter/free",
         ] {
             assert_eq!(redact(text), text, "{text}");
         }
+    }
+
+    #[test]
+    fn mixed_case_tokens_with_dashes_are_still_removed() {
+        assert_hidden(
+            &redact("key Zk3-Q9xL7vB2nM8pR4tY6wC1dF5hJ0aS"),
+            "Zk3-Q9xL7vB2nM8pR4tY6wC1dF5hJ0aS",
+        );
     }
 
     #[test]

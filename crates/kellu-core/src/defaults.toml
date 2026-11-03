@@ -6,7 +6,7 @@
 [providers.openrouter]
 kind = "openai_compat"
 base_url = "https://openrouter.ai/api/v1"
-model = "openrouter/auto"
+model = "openrouter/free"
 timeout_s = 60
 keyring_name = "openrouter"
 

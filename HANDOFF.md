@@ -64,7 +64,7 @@ activos ya están en `main` (y en GitHub), así que el logo se ve.
 - La bitácora de sesiones en `docs/bitacora/` (hábito útil, se mantiene).
 - Backlog de la sesión 03: opción `--provider` en la CLI, proveedor por defecto con saldo activo y
   alinear los identificadores de modelo (Gemini `gemini-flash-latest`, Gemma `gemma-4-26b-a4b-it`,
-  OpenRouter `openrouter/auto` o consulta de `/models`).
+  OpenRouter `openrouter/free` o consulta de `/models`).
 
 **Evitar:**
 - Secretos como argumento de línea de comandos (`secret set nombre "valor"`): leer de stdin o sin
