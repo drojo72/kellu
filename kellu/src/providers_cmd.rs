@@ -53,7 +53,15 @@ pub fn test(
         let Some(provider_config) = config.providers().get(name) else {
             continue;
         };
-        let provider = (services.build_provider)(provider_config, &lookup);
+        let provider = (services.build_probe)(provider_config, &lookup);
+        // Progress goes to stderr first, so a slow provider does not look like a freeze.
+        say(
+            err,
+            &format!(
+                "testing {name} (up to {:.0}s)...",
+                provider_config.timeout_s
+            ),
+        );
         let started = Instant::now();
         match provider.chat(&request) {
             Ok(_) => say(

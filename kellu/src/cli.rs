@@ -10,7 +10,7 @@ use std::sync::Arc;
 use clap::{CommandFactory, Parser, Subcommand};
 use kellu_common::app::{DISPLAY_NAME, NAME};
 use kellu_core::config::{self, Config};
-use kellu_providers::{KeyLookup, Provider, ProviderConfig, build_provider};
+use kellu_providers::{KeyLookup, Provider, ProviderConfig, build_provider_capped};
 use kellu_security::{SecretToolStore, Vault};
 use secrecy::SecretString;
 
@@ -132,7 +132,8 @@ pub type ProviderBuilder = Box<dyn Fn(&ProviderConfig, &KeyLookup) -> Box<dyn Pr
 pub struct Services {
     pub vault: VaultFactory,
     pub read_secret: SecretReader,
-    pub build_provider: ProviderBuilder,
+    /// Builds the client `providers test` uses: same as `build_provider` but with a short total cap.
+    pub build_probe: ProviderBuilder,
     pub load: Box<dyn Fn() -> kellu_common::Result<Config>>,
 }
 
@@ -155,7 +156,11 @@ impl Services {
                 Ok(Vault::new(Arc::new(store)))
             }),
             read_secret: Box::new(input::read_secret),
-            build_provider: Box::new(|config, lookup| build_provider(config, lookup)),
+            build_probe: Box::new(|config, lookup| {
+                let cap = std::time::Duration::try_from_secs_f64(config.timeout_s)
+                    .unwrap_or(std::time::Duration::from_secs(60));
+                build_provider_capped(config, lookup, cap)
+            }),
             load: Box::new(load),
         }
     }
@@ -390,6 +395,27 @@ mod tests {
         config::load_config(Some(Path::new("/nonexistent/kellu-test/config.toml")))
     }
 
+    fn fake_builder(
+        failing: &'static [(&'static str, &'static str)],
+        seen: Seen,
+    ) -> ProviderBuilder {
+        Box::new(move |config, lookup| {
+            let outcome = failing
+                .iter()
+                .find(|(name, _)| *name == config.name)
+                .map_or(Ok(()), |(_, reason)| {
+                    Err(ProviderError::new(&config.name, *reason).with_status(401))
+                });
+            Box::new(Fake {
+                name: config.name.clone(),
+                outcome,
+                keyring_name: config.keyring_name.clone(),
+                lookup: Arc::clone(lookup),
+                seen: Arc::clone(&seen),
+            })
+        })
+    }
+
     fn harness(failing: &'static [(&'static str, &'static str)], typed: &'static str) -> Harness {
         let store = Arc::new(MemoryStore::new());
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -397,21 +423,7 @@ mod tests {
         let services = Services {
             vault: Box::new(move || Ok(Vault::new(Arc::clone(&vault_store) as Arc<_>))),
             read_secret: Box::new(move |_, _| Ok(SecretString::from(typed.to_owned()))),
-            build_provider: Box::new(move |config, lookup| {
-                let outcome = failing
-                    .iter()
-                    .find(|(name, _)| *name == config.name)
-                    .map_or(Ok(()), |(_, reason)| {
-                        Err(ProviderError::new(&config.name, *reason).with_status(401))
-                    });
-                Box::new(Fake {
-                    name: config.name.clone(),
-                    outcome,
-                    keyring_name: config.keyring_name.clone(),
-                    lookup: Arc::clone(lookup),
-                    seen: Arc::clone(&seen_for_builder),
-                })
-            }),
+            build_probe: fake_builder(failing, Arc::clone(&seen_for_builder)),
             load: Box::new(defaults),
         };
         Harness {
