@@ -11,9 +11,10 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use kellu_common::text::{IdentityRedactor, Redactor, strip_control_chars, truncate};
+use kellu_common::text::{Redactor, strip_control_chars, truncate};
 use kellu_common::utc::UtcStamp;
 use kellu_common::{KelluError, Result, paths};
+use kellu_security::PatternRedactor;
 
 const MAX_SLUG: usize = 40;
 const MAX_PROVIDER_CHARS: usize = 40;
@@ -104,7 +105,8 @@ impl SessionLog {
         Self {
             directory: directory.into(),
             label: None,
-            redact: Arc::new(IdentityRedactor),
+            // Secrets are removed by default; a caller can replace the redactor, never forget it.
+            redact: Arc::new(PatternRedactor::new()),
             max_entry_chars: NonZeroUsize::MIN.saturating_add(DEFAULT_MAX_ENTRY_CHARS - 1),
             clock: Box::new(UtcStamp::now),
             file: None,

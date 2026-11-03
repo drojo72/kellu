@@ -98,6 +98,13 @@ pub fn collect_checks(which: Which<'_>, load: ConfigLoader<'_>) -> Vec<Check> {
         ),
         tool_check(
             which,
+            "busctl",
+            false,
+            "`kellu keys list` and `kellu keys cleanup-legacy` cannot list the keyring",
+            "part of systemd; Debian/Ubuntu: sudo apt install systemd",
+        ),
+        tool_check(
+            which,
             "bwrap",
             false,
             "the shell tool stays disabled (fail closed)",

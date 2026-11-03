@@ -4,8 +4,8 @@ use std::num::NonZeroUsize;
 
 /// Maps text to the same text with secrets removed.
 ///
-/// The real implementation lives in `kellu-security` (milestone M3) and is injected; until then
-/// [`IdentityRedactor`] is used. Any `Fn(&str) -> String` is a redactor too.
+/// The real implementation, `PatternRedactor`, lives in `kellu-security` and is injected; the
+/// core uses it by default. Any `Fn(&str) -> String` is a redactor too.
 pub trait Redactor: Send + Sync {
     /// Return `text` with secrets removed.
     fn redact(&self, text: &str) -> String;
@@ -20,7 +20,7 @@ where
     }
 }
 
-/// Placeholder redactor that returns the text unchanged.
+/// A redactor that returns the text unchanged. For tests that need raw text.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct IdentityRedactor;
 

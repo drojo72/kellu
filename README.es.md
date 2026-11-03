@@ -16,7 +16,7 @@
 
 **Asistente de IA seguro y modular para el editor Kate, que piensa antes de gastar tokens.**
 
-> **Estado: pre-0.1.0.** Se reconstruye en Rust con diseño de seguridad primero. Los hitos M0 a M2 están hechos (workspace, configuración estricta, logs y sesiones privados, `kellu doctor`, `kellu config`, proveedores de modelos y router, todo con paridad respecto del prototipo); desde M3 en adelante sigue siendo diseño. Aún no hay bóveda de claves, así que los proveedores no se pueden usar desde la línea de comandos. Los prototipos anteriores en Python y Ruby viven en las ramas `original-python` y `kellu-prototype-ruby` y son la referencia de comportamiento del port. Las APIs, comandos y configuración cambiarán. Aún no hay versión publicada. Modelo de seguridad: ver [SECURITY.md](SECURITY.md).
+> **Estado: pre-0.1.0.** Se reconstruye en Rust con diseño de seguridad primero. Los hitos M0 a M3 están hechos (workspace, configuración estricta, logs y sesiones privados, `kellu doctor`, `kellu config`, proveedores de modelos y router con paridad respecto del prototipo, y la capa de seguridad: bóveda de claves, redacción, deny globs, scope, grants, permisos y auditoría); desde M4 en adelante sigue siendo diseño. `kellu keys` y `kellu providers test` funcionan; el asistente en sí (REPL y LSP) aún no existe. Los prototipos anteriores en Python y Ruby viven en las ramas `original-python` y `kellu-prototype-ruby` y son la referencia de comportamiento del port. Las APIs, comandos y configuración cambiarán. Aún no hay versión publicada. Modelo de seguridad: ver [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -106,7 +106,7 @@ kellu/
 │   ├── kellu-common/      # errores, rutas XDG, archivos privados, utilidades de texto, reglas de endpoint, marcas UTC
 │   ├── kellu-providers/   # tipos, transporte HTTP, clientes compatible OpenAI y Google, registro
 │   ├── kellu-core/        # config, log, sesiones, router (sin efectos al iniciar)
-│   ├── kellu-security/    # (M3) vault, redacción, deny globs, permisos, scope, grants, auditoría
+│   ├── kellu-security/    # vault, redacción, deny globs, permisos, scope, grants, auditoría
 │   ├── kellu-sandbox/     # (M4) trait de backend, bubblewrap, política, staging
 │   ├── kellu-projects/    # (M5) descubrimiento, detección de stack, scopes
 │   ├── kellu-tools/       # (M5) registro con nivel de riesgo obligatorio; archivos, shell, git
@@ -116,11 +116,11 @@ kellu/
 └── packaging/             # entrada de escritorio
 ```
 
-Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-common` (M0), `kellu-core` y `kellu-providers` (M1; clientes, transporte y router desde M2). Faltan `kellu-security` (M3), `kellu-sandbox` (M4), `kellu-tools` y `kellu-projects` (M5), `kellu-frontends` (M6), y más adelante un crate `kellu-memory` (0.4.0, SQLite y pgvector opcional). La cascada de decisión vive en `kellu-core` (0.2.0 a 0.4.0) y el cliente MCP en `kellu-tools` (0.5.0). Cargo hace cumplir la dirección de dependencias (un ciclo no compila) y un test sobre `cargo metadata`. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [docs/PORTING.md](docs/PORTING.md).
+Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-common` (M0), `kellu-core` y `kellu-providers` (M1; clientes, transporte y router desde M2) y `kellu-security` (M3). Faltan `kellu-sandbox` (M4), `kellu-tools` y `kellu-projects` (M5), `kellu-frontends` (M6), y más adelante un crate `kellu-memory` (0.4.0, SQLite y pgvector opcional). La cascada de decisión vive en `kellu-core` (0.2.0 a 0.4.0) y el cliente MCP en `kellu-tools` (0.5.0). Cargo hace cumplir la dirección de dependencias (un ciclo no compila) y un test sobre `cargo metadata`. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [docs/PORTING.md](docs/PORTING.md).
 
 ## Inicio rápido
 
-> Los comandos describen la **interfaz objetivo** y pueden cambiar antes de 0.1.0. Hoy funcionan `kellu --version`, `kellu doctor` y `kellu config path|check|show`; `keys`, `tools` y `lsp` avisan que aún no están implementados.
+> Los comandos describen la **interfaz objetivo** y pueden cambiar antes de 0.1.0. Hoy funcionan `kellu --version`, `kellu doctor`, `kellu config path|check|show`, `kellu keys list|set|rm|cleanup-legacy` y `kellu providers test`; `tools` y `lsp` avisan que aún no están implementados.
 
 Requisitos (Linux primero): una toolchain de Rust para compilar desde el código fuente, `libsecret-tools` (`secret-tool`) y `bubblewrap`. En Debian o Ubuntu:
 
@@ -142,11 +142,13 @@ cargo test --workspace
 
 kellu doctor                 # revisa configuración, herramientas del keyring y bubblewrap
 kellu config show            # proveedores, rutas y nombres de claves (nunca valores)
-kellu keys set openrouter    # se guarda en tu keyring, sin mostrarse en pantalla
+kellu keys set openrouter    # el secreto se lee por stdin (oculto en terminal), se guarda en tu keyring, sin mostrarse
+kellu keys list              # nombres y niveles, nunca valores
+kellu providers test         # una petición mínima por proveedor: endpoint, modelo y clave
 kellu                        # asistente en terminal
 ```
 
-Si tienes secretos en un esquema anterior del keyring, `kellu keys migrate --dry-run` lista nombres (nunca valores) y la copia jamás borra los originales.
+Si tienes entradas con el esquema anterior del keyring (atributo `kai`), `kellu keys cleanup-legacy` las lista (solo nombres) y `--apply` borra únicamente las que ya existen con el esquema nuevo. Copiar las antiguas no está automatizado.
 
 ### Úsalo dentro de Kate (LSP)
 
@@ -200,7 +202,7 @@ M0 a M2 se implementaron primero en el prototipo de Python y se portan con parid
 - [x] **M0** Repositorio, workspace de Cargo, rutas XDG, CI, tests, licencia, `SECURITY.md`
 - [x] **M1** Configuración con defaults empaquetados, errores, logging, sesiones; sin efectos al iniciar
 - [x] **M2** Proveedores: cliente compatible con OpenAI (streaming, herramientas), Google, router con timeouts y respaldo
-- [ ] **M3** `kellu keys` con niveles y migración, entorno depurado, deny globs, redacción v1, permisos por riesgo
+- [x] **M3** `kellu keys` con niveles, `kellu providers test`, entorno depurado, deny globs, redacción v1, permisos por riesgo, scope y grants, auditoría
 - [ ] **M4** Sandbox: interfaz, backend bubblewrap, políticas, `kellu doctor`, tests de escape
 - [ ] **M5** Herramientas con esquemas generados y niveles de riesgo: archivos, shell en sandbox, git de solo lectura; escrituras de git y gh en el host con confirmación
 - [ ] **M6** REPL en terminal sobre el núcleo; LSP para Kate (hover, completado)

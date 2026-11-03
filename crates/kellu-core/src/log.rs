@@ -14,6 +14,7 @@ use kellu_common::paths;
 use kellu_common::text::{IdentityRedactor, Redactor, strip_control_chars};
 use kellu_common::utc::UtcStamp;
 use kellu_common::{KelluError, Result};
+use kellu_security::PatternRedactor;
 use log::{Level, LevelFilter, Log, Metadata, Record};
 
 /// File name of the application log inside the state directory.
@@ -302,7 +303,15 @@ pub fn configure_logging(
     Ok(())
 }
 
-/// A redactor for callers that have none yet.
+/// The default redactor for logs: removes known secret formats and assignments (see
+/// [`kellu_security::PatternRedactor`]).
+#[must_use]
+pub fn default_redactor() -> Arc<dyn Redactor> {
+    Arc::new(PatternRedactor::new())
+}
+
+/// A redactor that changes nothing. For tests that need to see raw text; production code uses
+/// [`default_redactor`].
 #[must_use]
 pub fn no_redaction() -> Arc<dyn Redactor> {
     Arc::new(IdentityRedactor)

@@ -38,7 +38,7 @@ flowchart TD
     proj["kellu-projects · M5"]:::todo
     prov["kellu-providers<br/>transport · OpenAI-compat · Google"]:::done
     sbx["kellu-sandbox · M4"]:::todo
-    sec["kellu-security · M3"]:::todo
+    sec["kellu-security<br/>vault · redact · deny · scope · grant · audit"]:::done
     com["kellu-common<br/>errors · paths · text · net"]:::done
     bin --> fe --> core
     core --> tools --> sbx --> sec --> com
@@ -86,7 +86,7 @@ kellu/
 │   ├── kellu-providers/     M1  provider types; M2 HTTP transport, OpenAI-compatible, Google, registry
 │   ├── kellu-core/          M1  config, log, session; M2 router
 │       (created when their milestone starts)
-│       kellu-security/      M3  vault, redaction, deny globs, permissions, scope, Grant, audit
+│       kellu-security/      vault, redaction, deny globs, permissions, scope, Grant, audit
 │       kellu-sandbox/       M4  backend trait, bubblewrap, policy from the Grant, staging
 │       kellu-tools/         M5  registry with mandatory risk level; files, shell, git
 │       kellu-projects/      M5  discovery, stack detection
@@ -103,8 +103,9 @@ kellu/
 | M0 | done | `kellu-common`, `kellu` |
 | M1 | done | `kellu-common`, `kellu-core`, `kellu-providers` (types) |
 | M2 | done, behavior parity 137/137 with the Python prototype (`porting/PARITY.md`) | `kellu-providers`, `kellu-core` (router), `kellu-common` (`AllProvidersFailed`) |
-| M3 | next | `kellu-security` |
-| M4 to M7 | planned | see Layout |
+| M3 | done | `kellu-security`, `kellu-core` (default redaction), `kellu` (`keys`, `providers test`) |
+| M4 | next | `kellu-sandbox` |
+| M5 to M7 | planned | see Layout |
 
 ## Providers and router (M2)
 
@@ -154,8 +155,8 @@ Transport rules (`kellu-providers`, enforced by tests in `crates/kellu-providers
 | MCP server | 0.5.0 | `kellu-frontends`, module `mcp_server` |
 | MCP client (agents and external tools) | 0.5.0 | `kellu-tools`, module `mcp_client` |
 | Local runtime detection | 0.5.0 | `kellu-providers`, module `local` |
-| Scope and grants | M3 | `kellu-security`, modules `scope`, `grants` |
-| Append-only audit log | M3 | `kellu-security`, module `audit` |
+| Scope and grants | M3 (done; consumed from M4) | `kellu-security`, modules `scope`, `grant` |
+| Append-only audit log | M3 (done; consumed from M5) | `kellu-security`, module `audit` |
 | Sandbox mounts derived from a grant, staging copy | M4 | `kellu-sandbox`, modules `policy`, `staging` |
 | Proposal contract and host-side apply | M5 | `kellu-tools`, modules `proposal`, `apply` |
 | Kate LSP server (hover, completion; later diagnostics, code actions) | M6, 0.2.0 | `kellu-frontends`, module `lsp` |
