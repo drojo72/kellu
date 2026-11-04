@@ -47,7 +47,7 @@ keyring_name = "grok"
 [providers.groq]
 kind = "openai_compat"
 base_url = "https://api.groq.com/openai/v1"
-model = "openai/gpt-oss-120b"
+model = "llama-3.3-70b-versatile"
 timeout_s = 60
 keyring_name = "groq"
 

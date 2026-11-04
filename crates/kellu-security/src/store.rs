@@ -381,7 +381,11 @@ impl SecretStore for SecretToolStore {
             return Err(Self::failure(tool, "SearchItems", &search));
         }
         let mut entries = Vec::new();
+        let mut unreadable: Option<Output> = None;
+        let mut unreadable_count = 0_usize;
+        let mut total = 0_usize;
         for path in parse_item_paths(&search.stdout)? {
+            total += 1;
             if Instant::now() >= deadline {
                 return Err(KelluError::security("listing the keyring took too long"));
             }
@@ -402,7 +406,19 @@ impl SecretStore for SecretToolStore {
             // An item can vanish between the two calls; that is not an error.
             if attributes.code == Some(0) {
                 entries.extend(parse_item_attributes(&attributes.stdout));
+            } else {
+                unreadable_count += 1;
+                unreadable.get_or_insert(attributes);
             }
+        }
+        // If nothing could be read at all, an empty list would be a lie ("no keys stored"):
+        // say what went wrong instead (typically a locked collection or another bus).
+        if let (true, Some(first)) = (entries.is_empty() && unreadable_count > 0, &unreadable) {
+            let mut error = Self::failure(tool, "Attributes", first).to_string();
+            error.push_str(&format!(
+                "; could not read {unreadable_count} of {total} keyring items"
+            ));
+            return Err(KelluError::security(error));
         }
         entries.sort();
         entries.dedup();
@@ -844,6 +860,18 @@ esac
         let entries = fake.store(QUICK).list().unwrap();
         assert_eq!(entries.len(), 1);
         assert!(entries[0].legacy);
+    }
+
+    #[test]
+    fn if_no_item_can_be_read_the_listing_fails_instead_of_looking_empty() {
+        let fake = Fake::new(CRUD);
+        fake.keyring();
+        for n in 1..=3 {
+            fs::remove_file(fake.dir.path().join(format!("attrs-{n}"))).unwrap();
+        }
+        let error = fake.store(QUICK).list().unwrap_err().to_string();
+        assert!(error.contains("could not read 3 of 3"), "{error}");
+        assert!(!error.contains('\u{1b}'), "{error:?}");
     }
 
     #[test]
