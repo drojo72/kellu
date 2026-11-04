@@ -420,9 +420,64 @@ impl SecretStore for SecretToolStore {
             ));
             return Err(KelluError::security(error));
         }
+        // An empty answer is also what a locked keyring gives: some implementations leave the
+        // items of a locked collection out of the search. Never unlock from here (listing must
+        // not prompt); just say so, so that "no keys stored" is not believed by mistake.
+        if entries.is_empty() && self.has_locked_collection(tool) {
+            return Err(KelluError::security(
+                "the keyring is locked, so its keys cannot be listed; unlock it (for example by \
+                 opening your system's passwords app or by running `kellu providers test`) and retry",
+            ));
+        }
         entries.sort();
         entries.dedup();
         Ok(entries)
+    }
+}
+
+impl SecretToolStore {
+    /// Whether any collection reports `Locked = true`. Any failure along the way reads as "no".
+    fn has_locked_collection(&self, tool: &Tool) -> bool {
+        let read = |path: &str, interface: &str, property: &str| {
+            self.run(
+                tool,
+                &[
+                    "--user",
+                    "--json=short",
+                    "get-property",
+                    SERVICE,
+                    path,
+                    interface,
+                    property,
+                ],
+                None,
+                MAX_ATTRIBUTES_BYTES,
+            )
+            .ok()
+            .filter(|output| output.code == Some(0))
+            .and_then(|output| serde_json::from_slice::<Value>(&output.stdout).ok())
+        };
+        let Some(collections) = read(
+            SERVICE_PATH,
+            "org.freedesktop.Secret.Service",
+            "Collections",
+        ) else {
+            return false;
+        };
+        let paths: Vec<&str> = collections
+            .get("data")
+            .and_then(Value::as_array)
+            .map(|paths| paths.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        paths
+            .into_iter()
+            .take(MAX_ITEMS)
+            .filter(|path| is_item_path(path))
+            .any(|path| {
+                read(path, "org.freedesktop.Secret.Collection", "Locked")
+                    .and_then(|value| value.get("data").and_then(Value::as_bool))
+                    == Some(true)
+            })
     }
 }
 
@@ -872,6 +927,42 @@ esac
         let error = fake.store(QUICK).list().unwrap_err().to_string();
         assert!(error.contains("could not read 3 of 3"), "{error}");
         assert!(!error.contains('\u{1b}'), "{error:?}");
+    }
+
+    fn empty_search_with_collection(fake: &Fake, locked: bool) {
+        fake.put("items.json", r#"{"type":"aoao","data":[[],[]]}"#);
+        fake.put(
+            "attrs-secrets",
+            r#"{"type":"ao","data":["/org/freedesktop/secrets/collection/login"]}"#,
+        );
+        fake.put(
+            "attrs-login",
+            if locked {
+                r#"{"type":"b","data":true}"#
+            } else {
+                r#"{"type":"b","data":false}"#
+            },
+        );
+    }
+
+    #[test]
+    fn an_empty_listing_from_a_locked_keyring_is_an_error_not_an_empty_list() {
+        let fake = Fake::new(CRUD);
+        empty_search_with_collection(&fake, true);
+        let error = fake.store(QUICK).list().unwrap_err().to_string();
+        assert!(error.contains("locked"), "{error}");
+        let calls = fake.read("busctl_argv");
+        assert!(
+            !calls.contains("Unlock"),
+            "listing must never unlock: {calls}"
+        );
+    }
+
+    #[test]
+    fn an_empty_listing_from_an_unlocked_keyring_is_just_empty() {
+        let fake = Fake::new(CRUD);
+        empty_search_with_collection(&fake, false);
+        assert!(fake.store(QUICK).list().unwrap().is_empty());
     }
 
     #[test]
