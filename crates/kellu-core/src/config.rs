@@ -966,6 +966,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("config.toml");
         fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
+        // Explicit mode: the file's default mode follows the umask (group-writable on many desktops).
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
         let text = load_config(Some(&path)).unwrap_err().to_string();
         assert!(text.contains("not valid UTF-8"), "{text}");
     }
