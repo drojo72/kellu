@@ -12,7 +12,7 @@
 
 # Kellu: estado y decisiones (traspaso al proyecto Rust)
 
-Fecha: 2026-11-01 (actualizado al cierre de M2; el traspaso original es del 2026-10-29). Kellu se
+Fecha: 2026-11-02 (actualizado al cierre de M3; el traspaso original es del 2026-10-29). Kellu se
 reescribe en **Rust puro**. Hay dos prototipos anteriores en GitHub, ambos como **referencia de
 comportamiento** (no se mantienen):
 
@@ -64,7 +64,7 @@ activos ya están en `main` (y en GitHub), así que el logo se ve.
 - La bitácora de sesiones en `docs/bitacora/` (hábito útil, se mantiene).
 - Backlog de la sesión 03: opción `--provider` en la CLI, proveedor por defecto con saldo activo y
   alinear los identificadores de modelo (Gemini `gemini-flash-latest`, Gemma `gemma-4-26b-a4b-it`,
-  OpenRouter `openrouter/auto` o consulta de `/models`).
+  OpenRouter `openrouter/free` o consulta de `/models`).
 
 **Evitar:**
 - Secretos como argumento de línea de comandos (`secret set nombre "valor"`): leer de stdin o sin
@@ -88,10 +88,10 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | Nombre | **Kellu**, "ayudante" en mapudungun (confirmado por el usuario). No usar "Keysign" (el holding) en nombres de producto ni "Kate" en el nombre. Kallu significa "azul": la grafía KALLU en un README fue un error. |
 | Licencia | MIT. Falta rellenar `<copyright holder>` en `LICENSE`. |
 | Lenguaje | **Rust**, edición 2024, MSRV 1.91, toolchain fijada en 1.91.1 (`rust-toolchain.toml`, M0). Núcleo con dependencias mínimas; `unsafe_code = "forbid"` y deny de `unwrap`, `expect` y `panic!` fuera de tests, ambos en `[workspace.lints]` y verificados por un test; secretos en tipos que se borran de memoria y no se imprimen (`secrecy`, desde M2). C++ solo para un posible plugin de Kate, que ya cubren KateAI y compañía vía ACP o gateway. |
-| Workspace | `crates/`: `kellu-common`, `kellu-security`, `kellu-sandbox`, `kellu-providers`, `kellu-projects`, `kellu-tools`, `kellu-core`, `kellu-frontends`, más el binario `kellu`. Dirección: `frontends -> core -> tools -> sandbox -> security -> common`; `providers` y `projects` también bajo `core`. Un crate se crea cuando empieza su hito; un test sobre `cargo metadata` lo exige. Ver la arista `sandbox -> security` en la sección 9. |
+| Workspace | `crates/`: `kellu-common`, `kellu-security`, `kellu-sandbox`, `kellu-providers`, `kellu-projects`, `kellu-tools`, `kellu-core`, `kellu-frontends`, más el binario `kellu`. Dirección: `frontends -> core -> tools -> sandbox -> security -> common`; `providers` y `projects` también bajo `core`. Un crate se crea cuando empieza su hito; un test sobre `cargo metadata` lo exige. Ver la arista `sandbox -> security` en la sección 9.2. |
 | Configuración | TOML en `~/.config/kellu/config.toml` sobre `defaults.toml` embebido (`include_str!`). Sin secretos, https obligatorio (http solo localhost), claves desconocidas son error, archivo propio y sin escritura de grupo u otros, máximo 256 KiB. |
-| Keyring | Atributo `kellu=<servicio>_<clave>` y etiqueta `KELLU: <nombre>` (mismo formato que el prototipo, que usaba el atributo `kai`). Niveles deducidos del nombre: `ai_` es `provider`; `github_`, `cloudflare_`, `render_`, `desec_`, `duckdns_` son `infra`; `neon_`, `supabase_`, `mysql_` son `db`; desconocido cae en `infra`. `keyring_name = "x"` resuelve a `ai_x_api_key`. En M3 se decide entre llamar a `secret-tool` (sin dependencia nueva, compatible) o un crate de Secret Service con atributos arbitrarios (permitiría `kellu keys list`). |
-| Proveedores por defecto | openrouter, deepseek (compatibles con OpenAI); google (`gemini-flash-latest`, alias móvil); gemma_direct (`gemma-4-26b-a4b-it`, clave y cuota propias); grok (`grok-4.3`, base `https://api.x.ai/v1`). Google usa `v1beta`. Rutas: general = gemma_direct, google, deepseek, openrouter; code = deepseek, openrouter; explain = google, openrouter. Presupuesto total del router: 120 s. |
+| Keyring | Atributo `kellu=<servicio>_<clave>` y etiqueta `KELLU: <nombre>` (mismo formato que el prototipo, que usaba el atributo `kai`). Niveles deducidos del nombre: `ai_` es `provider`; `github_`, `cloudflare_`, `render_`, `desec_`, `duckdns_` son `infra`; `neon_`, `supabase_`, `mysql_` son `db`; desconocido cae en `infra`. `keyring_name = "x"` resuelve a `ai_x_api_key`. **Decidido en M3:** alta, lectura y baja con `secret-tool` (sin dependencia nueva, compatible con las entradas existentes); **listado por D-Bus con `busctl`** (`SearchItems` con filtro vacío y la propiedad `Attributes` de cada ítem), que nunca pide un valor. `secret-tool search` no sirve para listar (ver sección 9). Sin `busctl`, `kellu keys list` y `cleanup-legacy` fallan con un mensaje claro y todo lo demás funciona. |
+| Proveedores por defecto | openrouter, deepseek (compatibles con OpenAI); google (`gemini-flash-latest`, alias móvil); gemma_direct (`gemma-4-26b-a4b-it`, clave y cuota propias); grok (`grok-4.3`, base `https://api.x.ai/v1`); groq (`llama-3.3-70b-versatile`, base `https://api.groq.com/openai/v1`, para probar el ingreso de claves). Google usa `v1beta`. Rutas: general = gemma_direct, groq, openrouter (provisional, para pruebas); code = deepseek, openrouter; explain = google, openrouter. Presupuesto total del router: 120 s. |
 | HTTP | **`ureq` 3.5 con `rustls`** (decidido y verificado en M2): cero redirecciones (`max_redirects(0)` devuelve el 3xx sin seguirlo), timeouts por operación y global, streaming incremental, tope de cuerpo también con `chunked`, y recibe `http::Request`, así que la URL la parsea nuestro `http::Uri`. Proveedor criptográfico `ring` (no es Rust puro: C y ensamblador). Raíces de certificados: **Mozilla incluidas** (`webpki-roots`), no el almacén del sistema: una CA privada o un proxy que intercepta TLS no son de confianza (revisar con `platform-verifier` si hace falta). Los endpoints https respetan `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` del entorno (el proxy solo ve un túnel `CONNECT`); los endpoints `http` (solo localhost) **nunca** usan proxy: `ureq` no exime a localhost por sí mismo y un proxy vería la clave en claro (hallazgo de la revisión independiente; prueba `proxy::plain_http_ignores_the_proxy_environment`). |
 | Sandbox | bubblewrap con `argv` como lista, sin shell. Política de versión **B**: se permiten versiones anteriores a 0.12.0 con advertencia (CVE-2026-87766), porque el diseño nunca crea puntos de montaje dentro del árbol del proyecto; modo estricto opcional. Ubuntu 24.04 trae 0.9.0 y su paquete retiró el parche en una actualización. Landlock (crate `landlock`) como respaldo posterior. |
 | Autorización | Lectura por proyecto (solo lectura). Escritura nunca permanente: el modelo propone diffs con hashes, el usuario elige denegar, parcial o completo, y **solo el núcleo aplica**. Ningún sandbox escribe en el proyecto real; las herramientas que escriben trabajan sobre una copia (staging) y su resultado vuelve como otra propuesta. Un solo `Grant` deriva la política de rutas y los montajes (prueba con `proptest`). Auditoría JSONL append-only (0600) con cadena de hashes. Acceso a archivos por descriptores (`cap-std` o `rustix openat2`). |
@@ -105,7 +105,7 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | M0 | Hecho | **Hecho.** Workspace, toolchain fijada, `deny.toml`, CI, `kellu --version`, `doctor`, rutas XDG, archivos privados, errores, test de arquitectura |
 | M1 | Hecho | **Hecho (paridad).** Config TOML estricta, logging privado con gancho de redacción, sesiones, `config path|check|show`, comprobación de config en `doctor` |
 | M2 | Hecho | **Hecho (paridad).** Proveedores (OpenAI-compatible con streaming y herramientas, Google), transporte HTTP endurecido, router con respaldo |
-| M3 | No empezado | Vault de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
+| M3 | Hecho | **Hecho** (los bloques de seguridad están probados; los consume M4/M5, ver sección 9). Bóveda de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
 | M4 | No empezado | Sandbox: política derivada del `Grant`, copia de trabajo, límites de recursos, sondeo de bubblewrap en `doctor`, tests de escape |
 | M5 | No empezado | Registro de herramientas con riesgo obligatorio, propuesta y aplicación de diffs, archivos, shell en sandbox, git de lectura; escrituras de git y gh en el host con confirmación |
 | M6 | No empezado | REPL, LSP (hover y completion), tema de terminal |
@@ -118,11 +118,11 @@ compatible con OpenAI y ACP; 0.4.0 memoria (SQLite, pgvector opcional); 0.5.0 ru
 perfiles de hardware y MCP.
 
 ## 4. Inventario de claves (solo nombres)
-- provider: `ai_openrouter_api_key`, `ai_google_api_key`, `ai_deepseek_api_key`, `ai_grok_api_key`, `ai_gemma_direct_api_key` (ya copiada; borrar la entrada antigua `gemma_direct_api_key` tras verificar).
+- provider: `ai_openrouter_api_key`, `ai_google_api_key`, `ai_deepseek_api_key`, `ai_grok_api_key`, `ai_groq_api_key`, `ai_gemma_direct_api_key` (ya copiada; borrar la entrada antigua `gemma_direct_api_key` tras verificar).
 - infra: `github_token`, `cloudflare_tunnel_token`, `cloudflare_workers_token`, `cloudflare_r2_token`, `cloudflare_pages_token`, `cloudflare_api_token`, `render_api_key`, `desec_token`.
 - db: `neon_admin_key`, `supabase_admin_key`.
 - Borrar: `test_key`. No migradas (probablemente nunca guardadas): `cloudflare_zone_token`, `duckdns_token`, `mysql_*`.
-- Siguen existiendo las entradas del prototipo bajo el atributo `kai`; borrarlas cuando Kellu lea bien (`kellu keys cleanup-legacy`, M3).
+- Siguen existiendo las entradas del prototipo bajo el atributo `kai`; `kellu keys cleanup-legacy` (en seco) las lista y `--apply` borra **solo** las que ya existen como entradas `kellu`; las demás se conservan.
 - Abiertas: revocar o reducir `cloudflare_api_token` (token completo, ya hay acotados) y rotar el PAT de GitHub por uno fine-grained sin `delete_repo`.
 - `secret-tool search` imprime los secretos: filtrar con `grep -E '^(label|attribute\.)'`. Nunca pegar valores en el chat.
 
@@ -141,7 +141,9 @@ perfiles de hardware y MCP.
 ## 6. Cómo trabajar
 - Entorno de verificación (se repite en cada sesión; no persiste):
   `apt-get install -y cargo-1.91 rustc-1.91 rust-1.91-clippy rustfmt-1.91 bubblewrap` y
-  `export PATH=/usr/lib/rust-1.91/bin:$PATH`.
+  `export PATH=/usr/lib/rust-1.91/bin:$PATH`. Para la prueba contra un keyring real:
+  `apt-get install -y gnome-keyring libsecret-tools dbus dbus-x11` y
+  `kellu/tests/real-keyring.sh target/debug/kellu` (sesión D-Bus y llavero desechables).
 - Antes de entregar: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
   `cargo test --workspace --locked`; `cargo deny check` y `cargo audit` cuando se puedan instalar
   (`cargo install --locked cargo-deny cargo-audit --root /tmp/tools`, tarda varios minutos).
@@ -168,6 +170,17 @@ perfiles de hardware y MCP.
   los endpoints `http` los ignoran, con un proxy muerto).
 - Que `secrecy` borre todas las copias de una clave: las que `ureq` y `http` hacen al armar la
   cabecera no se borran.
+- **KWallet / ksecretd (KDE).** Todo lo del keyring se verificó contra **gnome-keyring**. El listado
+  por D-Bus (`SearchItems` vacío y `Attributes`) y `secret-tool` contra la implementación de
+  Secret Service de KWallet no se probaron; es lo primero que hay que probar en un Plasma.
+- `openat2` (Linux 5.6 o más) en el kernel y el seccomp del equipo del usuario: sin él `Scope`
+  rechaza leer archivos (falla cerrado); el camino de `ENOSYS` solo se probó por lectura de código.
+- Calidad real del redactor v1: no se midió contra un corpus de secretos y código reales (falsos
+  negativos y positivos de la heurística de entropía). Es de mejor esfuerzo, igual que en `SECURITY.md`.
+- Copias residuales de un secreto en memoria: el búfer interno de `std` al leer stdin en
+  `keys set` y lo que haga `secret-tool` con su proceso no se borran (`secrecy`/`zeroize` solo
+  cubren nuestras copias).
+- La auditoría con **varios procesos** reales escribiendo a la vez (se probó con 8 hilos y `flock`).
 - Comportamiento de bubblewrap como usuario sin privilegios en el equipo del usuario (las
   pruebas se hicieron como root); los comportamientos de Kate señalados en la sección 5; el CI en
   GitHub (no se ha ejecutado); las pruebas de "archivo o directorio de otro usuario" solo corren
@@ -180,7 +193,87 @@ perfiles de hardware y MCP.
 instrucciones del proyecto y no está en el repositorio. El prototipo de Python completo
 (`kellu-M2.zip`) es para la rama `original-python`.
 
-## 9. Estado al cierre de M2 (2026-11-01)
+## 9. Estado al cierre de M3 (2026-11-02)
+
+**Verificado** (Rust 1.91.1 por apt): `cargo fmt --check`, `cargo clippy --workspace --all-targets
+--locked -- -D warnings`, `cargo test --workspace --locked` (368 tests, 0 fallos, repetida 5 veces sin intermitencias), `cargo deny
+check` (advisories, bans, licenses y sources en verde) y `cargo audit` (86 paquetes en `Cargo.lock`, 1402 avisos, sin hallazgos). Además,
+**contra un llavero real**: `kellu/tests/real-keyring.sh` ejecuta el binario `kellu` sobre un
+gnome-keyring real en una sesión D-Bus desechable (31 comprobaciones: alta por stdin,
+reemplazo, listado con niveles, `cleanup-legacy` en seco y aplicado, baja, entorno mínimo; en ningún
+punto aparece un valor en la salida), y una prueba con pseudo-terminal real (eco apagado mientras
+se escribe, el secreto no se refleja, el eco se restaura). **No verificado:** ver la sección 7
+(sobre todo KWallet).
+
+**Hallazgo que cambió el diseño:** la primera versión del listado usaba
+`secret-tool search --all xdg:schema ...` y pasaba todos los tests con un `secret-tool` falso, pero
+contra un llavero real devolvía **una entrada de cuatro**. Además `secret-tool search` exige un par
+atributo/valor (no hay "listar todo") e **imprime los secretos**. Por eso el listado se rehízo sobre
+D-Bus: `SearchItems` con filtro vacío devuelve todos los ítems y se lee solo `Attributes` de cada
+uno; nunca se pide un valor. Los formatos JSON de `busctl` de los tests son capturas reales.
+
+**Hecho en M3:**
+- `kellu-security` (nuevo; depende solo de `kellu-common`): `tier` (niveles por prefijo, desconocido
+  cae en `infra`, `keyring_name` siempre a `ai_<x>_api_key`), `store` (`SecretStore`: `secret-tool`
+  más `busctl`; `MemoryStore` para tests), `vault` (`Vault`: la única lectura posible es
+  `provider_key`; `infra` y `db` se guardan, listan y borran pero **no tienen ruta de lectura**),
+  `env` (entorno depurado por lista blanca), `redact` (`PatternRedactor`), `deny` (`DenyGlobs`),
+  `scope` (`Scope`), `grant` (`Grant`), `permission` (`Risk`, `requirement`), `audit` (`AuditLog`,
+  `verify`) y `hash`.
+- CLI: `kellu keys list|set|rm|cleanup-legacy [--apply]` y `kellu providers test [nombre]`;
+  `doctor` comprueba `busctl`. El secreto de `keys set` se lee solo por stdin (sin eco en
+  terminal); pasarlo como argumento es un error de uso y no se guarda.
+- `kellu-core`: `SessionLog` redacta **por defecto** con `PatternRedactor` (antes era la identidad);
+  `log::default_redactor()`; `config show` calcula la entrada con `provider_entry`.
+
+**Decisiones tomadas en M3 (con motivo):**
+- `secret-tool` para alta, lectura y baja; `busctl` solo para listar. Un crate de Secret Service
+  habría traído unos 200 paquetes al árbol (medido con `cargo tree`; hoy son 60 en total) por una
+  sola función. `busctl` es parte de systemd; `doctor` lo marca como opcional.
+- Los niveles se deducen del nombre y no se guardan. `keyring_name` solo puede apuntar a `ai_*`
+  (probado: una configuración manipulada con `keyring_name = "github_token"` resuelve a
+  `ai_github_token_api_key`, nunca a `github_token`, y el almacén solo recibe nombres `ai_*`).
+- Los nombres de ruta D-Bus que devuelve el llavero se validan antes de llegar a `argv` de `busctl`.
+- Redactor v1: patrones de formatos conocidos, bloques de clave privada, asignaciones
+  (`api_key = ...`, `Authorization: Bearer ...`), valores exactos de claves registradas y entropía.
+  Marcador fijo `[REDACTED]`: **los marcadores reversibles de `SECURITY.md` siguen en diseño**.
+  Escaneo lineal, sin pánico con cualquier entrada.
+- `Scope`: lectura con `openat2` (`RESOLVE_BENEATH | NO_SYMLINKS | NO_MAGICLINKS`) sobre un
+  descriptor del directorio raíz, así que no hay carrera entre comprobar y abrir; la raíz no puede
+  ser `/`, el home ni un ancestro (ni siquiera confirmando); exige marcador de proyecto salvo
+  confirmación; sin `openat2` falla cerrado. `rustix` en lugar de `cap-std`: una dependencia menos.
+- `Grant`: solo lectura al abrir el proyecto; la escritura se aprueba por archivo con el hash base
+  que vio el usuario; red apagada por defecto; caduca. Un permiso de red sin perfil `network` es
+  `Denied`, no `Confirm`.
+- Auditoría: JSONL con cadena SHA-256, archivo `0600`, `flock` exclusivo, no anexa a un log
+  corrupto, `verify` detecta edición, borrado y reordenamiento de líneas. Es **evidencia** de
+  manipulación, no protección: quien pueda reescribir todo el archivo puede reconstruir la cadena.
+- Dependencias nuevas: `sha2` 0.11 (más `digest`, `block-buffer`, `crypto-common`, `hybrid-array`,
+  `typenum` y `cpufeatures`, todas RustCrypto), `zeroize` (ya estaba en el árbol por `secrecy`) y las
+  características `stdio` y `termios` de `rustix`. `Cargo.lock`: +7 paquetes externos.
+- `kellu-core` pasa a depender de `kellu-security` (arista ya permitida).
+
+**Abiertos (decidir):**
+1. **`busctl` como requisito para listar.** Recomendación: mantenerlo (opcional, con mensaje claro).
+   Alternativa: un crate de Secret Service, a costa de ~200 paquetes.
+2. **`keys migrate`** (copiar `kai` a `kellu`) está en `SECURITY.md` pero **no se implementó**: solo
+   existe `cleanup-legacy`. Copiar exigiría leer el valor antiguo; como ya migraste a mano, propongo
+   quitar `migrate` del diseño salvo que lo quieras.
+3. Los patrones deny **del usuario** (`DenyGlobs::with_user_patterns`) no están conectados a
+   `config.toml` todavía, ni tampoco el cambio de niveles por el usuario que describe `SECURITY.md`.
+4. Siguen abiertos los de M2 (mantener `ring` y las raíces incluidas; Google sin `finishReason`).
+
+**Qué aún no consume nada:** `Grant`, los permisos, `Scope`, los deny globs y la auditoría están
+probados pero ninguna herramienta los usa hasta M4 y M5. Ningún comando envía contexto de archivos
+a un proveedor (solo `providers test`, con un prompt fijo). El binario todavía no llama a
+`configure_logging`, así que el log de la aplicación no se produce hasta M6.
+
+**Siguiente: M4.** Sandbox: política de montajes derivada del `Grant` (un test que compare ambas),
+copia de trabajo, límites de recursos, sondeo de bubblewrap y de `openat2` en `doctor`, y tests de
+escape. Antes, probar `kellu keys list` y `kellu providers test` en tu equipo (sobre todo si usas
+KWallet).
+
+## 9.1 Estado al cierre de M2 (2026-11-01)
 
 **Verificado** (Rust 1.91.1 instalado por apt; rustup no alcanza `static.rust-lang.org` desde el
 entorno de verificación): `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
@@ -243,7 +336,7 @@ deny globs, redactor v1 (cablearlo al gancho de `log` y `session`), permisos por
 eco; (4) `kellu providers test`, conectando la bóveda con `KeyLookup`. Antes de M3, decidir si se
 mantiene `ring` y las raíces incluidas (sección 2, fila HTTP).
 
-## 9.1 Estado al cierre de M1 (2026-10-31)
+## 9.2 Estado al cierre de M1 (2026-10-31)
 
 **Verificado:** `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`
 y `cargo test --workspace --locked` (147 tests) en verde con Rust 1.91.1; `cargo deny check` en

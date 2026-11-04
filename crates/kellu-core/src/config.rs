@@ -579,7 +579,14 @@ mod tests {
         let names: Vec<_> = config.providers().keys().map(String::as_str).collect();
         assert_eq!(
             names,
-            ["deepseek", "gemma_direct", "google", "grok", "openrouter"]
+            [
+                "deepseek",
+                "gemma_direct",
+                "google",
+                "grok",
+                "groq",
+                "openrouter"
+            ]
         );
         assert_eq!(config.routing().len(), 3);
         assert_eq!(config.router().total_timeout_s, 120.0);
@@ -598,10 +605,7 @@ mod tests {
     fn default_routes_match_the_design() {
         let config = parse_config(&load_defaults().unwrap(), None, None).unwrap();
         let chain = |task: &str| config.route(task).chain().collect::<Vec<_>>();
-        assert_eq!(
-            chain("general"),
-            ["gemma_direct", "google", "deepseek", "openrouter"]
-        );
+        assert_eq!(chain("general"), ["gemma_direct", "groq", "openrouter"]);
         assert_eq!(chain("code"), ["deepseek", "openrouter"]);
         assert_eq!(chain("explain"), ["google", "openrouter"]);
     }
@@ -924,7 +928,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let config = load_config(Some(&dir.path().join("nope.toml"))).unwrap();
         assert_eq!(config.source(), None);
-        assert_eq!(config.providers().len(), 5);
+        assert_eq!(config.providers().len(), 6);
     }
 
     #[test]

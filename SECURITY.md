@@ -16,9 +16,9 @@ Kellu is an AI assistant that can read your code, call external model providers 
 
 > **Status: pre-0.1.0.** The controls below are the **design** that 0.1.0 must meet, tracked as milestones (see [Security roadmap](#security-roadmap)). Until a control ships, treat it as not implemented.
 >
-> **Implemented and tested so far (M0 to M2):** no side effects at startup or construction; state directories `0700` and files `0600`, opened without following symlinks and verified on the open descriptor (T8); strict, secret-free configuration (T11); log and session files that strip control and format characters, cannot forge structure and cannot be redirected through a symlink (T9, partly); the provider transport (redirects refused, keys only in headers and scrubbed from errors, size and duration limits, https enforced) and validation of provider responses and tool calls (T7, T11, partly).
+> **Implemented and tested so far (M0 to M3):** no side effects at startup or construction; state directories `0700` and files `0600`, opened without following symlinks and verified on the open descriptor (T8); strict, secret-free configuration (T11); log and session files that strip control and format characters, cannot forge structure and cannot be redirected through a symlink (T9, partly); the provider transport (redirects refused, keys only in headers and scrubbed from errors, size and duration limits, https enforced) and validation of provider responses and tool calls (T7, T11, partly); the keyring vault with tiers, secrets read only through stdin and never through arguments, scrubbed child environments (T3, T8); redaction v1 applied by default to session logs (T9, best effort); deny globs, project scope opened beneath a directory descriptor without following symlinks, grants, risk-based permissions and a hash-chained audit log, **as tested building blocks** (T2, T5, partly).
 >
-> **Not implemented yet:** the redactor itself (logs and sessions call a redaction hook that does nothing until M3, so **secrets are not yet removed from them**), the keyring vault (providers receive keys through an injected lookup; the real vault is M3), deny globs, permissions and the sandbox. Network paths exist (providers) but send whatever context they are given without redaction. Do not point Kellu at files that contain secrets.
+> **Not implemented yet:** the sandbox (M4), the tools that would use grants, permissions, scope, deny globs and the audit log (M5: until then nothing consumes them), the terminal REPL and the LSP server (M6, which will also start the application log). No command sends file context to a provider today (`kellu providers test` sends a fixed prompt), but when the front ends arrive the outbound path must apply deny globs and redaction first: redaction is **best effort** and uses a fixed `[REDACTED]` marker (reversible placeholders are planned). Do not point Kellu at files that contain secrets.
 
 ## Reporting a vulnerability
 
@@ -92,11 +92,11 @@ Include the affected version or commit, steps to reproduce, the impact you expec
 
 ## Secrets management
 
-*(Design for M3; the keyring vault is not implemented yet.)*
+*(Implemented in M3. Store, lookup and clear use `secret-tool`; listing asks the Secret Service over D-Bus through `busctl` and never requests a secret value. Verified against gnome-keyring; KWallet is not verified.)*
 
 - Secrets live in the OS keyring (Secret Service on Linux). They are not stored in dotfiles or `.env` files.
 - Entries have one attribute named `kellu` whose value is `<service>_<key>` (for example `kellu=ai_openrouter_api_key`) and the label `KELLU: <name>`. It is the same shape the earlier prototype used, with a different attribute name, so existing entries and shell habits keep working (`secret-tool lookup kellu ai_openrouter_api_key`).
-- **Tiers are not stored in the keyring.** Kellu derives them from the entry name: prefix `ai_` is `provider`; `github_`, `cloudflare_`, `render_`, `desec_` and `duckdns_` are `infra`; `neon_`, `supabase_` and `mysql_` are `db`. A name that matches nothing defaults to `infra`, so unknown secrets fail closed. Users can override the mapping in `config.toml`.
+- **Tiers are not stored in the keyring.** Kellu derives them from the entry name: prefix `ai_` is `provider`; `github_`, `cloudflare_`, `render_`, `desec_` and `duckdns_` are `infra`; `neon_`, `supabase_` and `mysql_` are `db`. A name that matches nothing defaults to `infra`, so unknown secrets fail closed. A per-user override in `config.toml` is planned and not implemented.
 - A provider's `keyring_name` in the configuration maps to the entry `ai_<keyring_name>_api_key`, and may only point into the `ai_*` space (tier `provider`), so a tampered configuration cannot read an `infra` or `db` secret and send it to another endpoint.
 
 | Tier | Examples | Availability |
@@ -106,7 +106,7 @@ Include the affected version or commit, steps to reproduce, the impact you expec
 | `db` | database passwords and admin keys | Same as `infra` |
 
 - Secrets are never placed in the model context, in command-line arguments (visible in `/proc`), in the environment of sandboxed processes, or in logs. Secrets are read from stdin or without echo, never from arguments.
-- `kellu keys migrate` copies entries from the earlier prototype's attribute (`kai`) to `kellu` for anyone who has not done it by hand. It never deletes the originals; removal is a separate, confirmed step. `--dry-run` shows names only, never values.
+- `kellu keys cleanup-legacy` lists the entries left by the earlier prototype's attribute (`kai`); with `--apply` it deletes only those that already exist as `kellu` entries and keeps the rest. It shows names only, never values. Copying old entries to the new attribute is not implemented: do it by hand.
 - Use **least-privilege, expiring tokens**. Prefer fine-grained GitHub tokens without `delete_repo`, and rotate keys that were ever pasted into a terminal or chat.
 
 ## Tool risk levels
@@ -150,7 +150,7 @@ Limits you should know:
 
 ## Data egress and sanitization
 
-- **Outbound:** deny globs, then secret redaction (known token formats, high-entropy strings, private key blocks), with reversible placeholders so answers can be re-hydrated locally.
+- **Outbound:** deny globs, then secret redaction (known token formats, high-entropy strings, private key blocks), with reversible placeholders so answers can be re-hydrated locally (redaction v1 uses a fixed `[REDACTED]` marker; reversible placeholders are planned).
 - **Inbound:** all external content is untrusted. Filtering cannot stop prompt injection by itself, which is why privilege separation, confirmation and the sandbox exist.
 - Redaction is **best effort**. Patterns and entropy checks miss things. Do not rely on them as the only protection for highly sensitive material; use local-only mode or do not send it.
 - The terminal REPL and the LSP server send code context to the provider you configure. Until the egress controls ship, do not enable Kellu on files that contain secrets.
@@ -172,7 +172,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 | M0 | Done | This document, `.gitignore` for secrets, CI with `cargo deny` and `cargo audit`, private files and directories opened without following symlinks |
 | M1 | Done | No side effects at startup or construction; strict, secret-free TOML configuration; rotating logs and session logs that sanitize control characters and cannot forge structure (the redaction hook is wired, the redactor arrives in M3) |
 | M2 | Done | Endpoints must be https (http only for localhost) and are rechecked by the transport; redirects are refused so keys are never replayed to another host; response, line and stream-duration limits; keys travel only in headers, are validated against header injection and scrubbed from every error message; provider responses and tool calls are validated (names, JSON arguments, counts); a stream fails over only before any text was delivered; per-provider timeouts and a total time budget |
-| M3 | Planned | Keyring vault with tiers, migration, scrubbed environment, deny globs, redaction v1, risk-based permissions, scope and `Grant`, append-only audit log |
+| M3 | Done | Keyring vault with tiers (a provider key name can only resolve into `ai_*`; `infra` and `db` have no read path), scrubbed environment, deny globs, redaction v1, risk-based permissions, project scope opened beneath a directory descriptor, `Grant`, hash-chained audit log, `kellu keys` and `kellu providers test`. Tested building blocks: nothing consumes grants, permissions, scope, deny globs or the audit log until M4 and M5 |
 | M4 | Planned | Sandbox backend, mounts derived from the `Grant`, staging copy, resource limits, `kellu doctor` (including the bubblewrap version warning), escape tests |
 | M5 | Planned | Tool registry requiring a declared risk level; proposal contract and host-side apply of approved hunks; host-side git and `gh` writes with confirmation |
 | M6 | Planned | LSP and REPL honoring deny globs and redaction |

@@ -6,7 +6,7 @@
 [providers.openrouter]
 kind = "openai_compat"
 base_url = "https://openrouter.ai/api/v1"
-model = "openrouter/auto"
+model = "openrouter/free"
 timeout_s = 60
 keyring_name = "openrouter"
 
@@ -42,9 +42,18 @@ model = "grok-4.3"
 timeout_s = 60
 keyring_name = "grok"
 
+# Groq, OpenAI-compatible. `llama-3.3-70b-versatile` is a plain (non-reasoning) production model,
+# so the one-word `providers test` probe is not eaten by hidden reasoning tokens.
+[providers.groq]
+kind = "openai_compat"
+base_url = "https://api.groq.com/openai/v1"
+model = "openai/gpt-oss-120b"
+timeout_s = 60
+keyring_name = "groq"
+
 [routing.general]
 primary = "gemma_direct"
-backup = ["google", "deepseek", "openrouter"]
+backup = ["groq", "openrouter"]
 
 [routing.code]
 primary = "deepseek"

@@ -12,7 +12,7 @@
 
 # Permissions and sandbox design
 
-Status: design for milestones M3 to M5. It keeps the practical parts of an external proposal
+Status: the building blocks of M3 (permissions, scope, `Grant`, audit log, deny globs, scrubbed environment) are implemented and tested in `kellu-security`; nothing consumes them until M4 and M5. The rest is design for milestones M4 and M5. It keeps the practical parts of an external proposal
 (propose, approve, apply; hashes; audit) and drops what does not fit Kellu: a read-write sandbox
 for the model, overlayfs, and Kate-internal APIs that an external process cannot call.
 

@@ -16,7 +16,7 @@ Status: the project is being rewritten in Rust. The Python prototype (milestones
 cases) is the **behavioral reference**: its designs, defaults and tests are the specification.
 Behavior parity comes first; new work (M3 onwards) starts only after parity.
 
-**Progress: M0 to M2 are ported (137 of 137 test functions mapped); parity is reached and new work starts at M3.** The register is
+**Progress: M0 to M2 are ported (137 of 137 test functions mapped); parity is reached. M3 (new work) is done.** The register is
 [porting/PARITY.md](porting/PARITY.md).
 
 ## Branches
@@ -144,8 +144,8 @@ Still proposed (confirm and justify per milestone):
 
 | Purpose | Crate | Milestone |
 |---|---|---|
-| Capability-based file access | `cap-std` | M3 |
-| Hashing | `sha2` | M3 |
+| Capability-based file access | `rustix` `openat2` (chosen over `cap-std`: one dependency fewer) | M3 |
+| Hashing | `sha2` | M3 (done) |
 | Diffs | `similar`, own or `diffy` applier | M5 |
 | Gitignore | `ignore` | M3 or M5 |
 | LSP | `lsp-server`, `lsp-types` | M6 |
@@ -153,9 +153,10 @@ Still proposed (confirm and justify per milestone):
 | Tests | `proptest`, `assert_cmd`, `predicates`, `insta` | per milestone |
 | CI tooling | `cargo-deny`, `cargo-audit` | M0 |
 
-Keyring access in M3: either keep calling `secret-tool` (no new dependency, compatible with the
-existing entries) or use a Secret Service crate that supports arbitrary attributes (which would
-also allow `kellu keys list`). Decide in M3 after testing against the real schema `kellu=<name>`.
+Keyring access (decided in M3 and tested against a real gnome-keyring): `secret-tool` for store,
+lookup and clear, which keeps compatibility with the existing entries; listing goes through the
+Secret Service over D-Bus with `busctl`, because `secret-tool search` cannot list everything and
+prints secrets. A Secret Service crate would add about 200 packages for that one function.
 
 ## Workspace layout
 

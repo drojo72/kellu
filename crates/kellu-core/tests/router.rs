@@ -399,7 +399,14 @@ fn from_config_builds_one_provider_per_configured_entry() {
     let names: Vec<_> = router.provider_names().collect();
     assert_eq!(
         names,
-        ["deepseek", "gemma_direct", "google", "grok", "openrouter"]
+        [
+            "deepseek",
+            "gemma_direct",
+            "google",
+            "grok",
+            "groq",
+            "openrouter"
+        ]
     );
 }
 

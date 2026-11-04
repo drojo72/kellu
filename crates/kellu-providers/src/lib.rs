@@ -15,7 +15,7 @@ mod common;
 mod stream;
 
 pub use base::{EventStream, KeyLookup, Provider};
-pub use registry::build_provider;
+pub use registry::{build_provider, build_provider_capped};
 pub use types::{
     ChatRequest, ChatResponse, Message, ProviderConfig, ProviderKind, StreamEvent, ToolCall,
     ToolSpec, Usage,

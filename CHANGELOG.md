@@ -18,12 +18,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 
 ## [Unreleased]
 
+### Added
+- Packaged provider `groq` (OpenAI-compatible, `llama-3.3-70b-versatile`); the `general` route is
+  now `gemma_direct` -> `groq` -> `openrouter` (provisional, for testing).
+
+### Fixed
+- The redactor no longer hides long lowercase model ids such as `anthropic/claude-3.5-sonnet`.
+- `kellu providers test` caps each probe at the provider's `timeout_s` and shows progress.
+- The OpenRouter default model is `openrouter/free`.
+
 ### Changed
 - The project is being rewritten in pure Rust. The Python prototype (milestones M0 to M2, 185 test
   cases) and the Ruby prototype are preserved on the `original-python` and `kellu-prototype-ruby`
   branches as behavioral references for the port.
 
 ### Added
+- **M3** (new work, not part of the prototype port):
+  - `kellu-security`: keyring vault with tiers deduced from the entry name (a provider's
+    `keyring_name` can only resolve into `ai_*`; `infra` and `db` secrets can be stored, listed
+    and removed but have no read path), scrubbed child environments (allowlist), redactor v1
+    (token formats, private key blocks, assignments, known values, entropy), deny globs, project
+    scope opened with `openat2` (`BENEATH`, `NO_SYMLINKS`) that refuses `/`, the home directory
+    and its ancestors, `Grant` (read-only by default, per-proposal writes with the hash the user
+    saw, network off, expiry), risk-based permissions, and a hash-chained append-only audit log.
+  - CLI: `kellu keys list|set|rm|cleanup-legacy` (secrets only through stdin, hidden on a
+    terminal) and `kellu providers test`. `kellu doctor` checks `busctl`.
+  - Keyring access: `secret-tool` for store, lookup and clear; listing goes through the Secret
+    Service over D-Bus with `busctl` and never requests a secret value. Verified against a real
+    gnome-keyring (`kellu/tests/real-keyring.sh`).
+  - `kellu-core`: sessions redact secrets by default (they used the identity function before).
+  - Dependencies: `sha2` (and six RustCrypto crates below it), `zeroize` (already in the tree),
+    `rustix` features `stdio` and `termios`.
 - **M2** (parity with the Python prototype; completes the port, 137 of 137 test functions mapped):
   - `kellu-providers`: provider-neutral types, the `Provider` trait, an OpenAI-compatible client
     (chat, streaming, tool calls), a Google client (Gemini and Gemma, streaming), a registry and a

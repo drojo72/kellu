@@ -2,6 +2,7 @@
 
 use crate::base::{KeyLookup, Provider};
 use crate::google::GoogleProvider;
+use crate::http::Limits;
 use crate::openai_compat::OpenAiCompatProvider;
 use crate::types::{ProviderConfig, ProviderKind};
 
@@ -15,6 +16,31 @@ pub fn build_provider(config: &ProviderConfig, key_lookup: &KeyLookup) -> Box<dy
     match config.kind {
         ProviderKind::OpenAiCompat => Box::new(OpenAiCompatProvider::new(config.clone(), lookup)),
         ProviderKind::Google => Box::new(GoogleProvider::new(config.clone(), lookup)),
+    }
+}
+
+/// Like [`build_provider`], but no request may take longer than `max_duration` in total (the
+/// default cap is ten minutes, far too long for a quick connectivity probe).
+#[must_use]
+pub fn build_provider_capped(
+    config: &ProviderConfig,
+    key_lookup: &KeyLookup,
+    max_duration: std::time::Duration,
+) -> Box<dyn Provider> {
+    let lookup = KeyLookup::clone(key_lookup);
+    let limits = Limits {
+        max_duration,
+        ..Limits::default()
+    };
+    match config.kind {
+        ProviderKind::OpenAiCompat => Box::new(OpenAiCompatProvider::with_limits(
+            config.clone(),
+            lookup,
+            limits,
+        )),
+        ProviderKind::Google => {
+            Box::new(GoogleProvider::with_limits(config.clone(), lookup, limits))
+        }
     }
 }
 
