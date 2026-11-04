@@ -18,6 +18,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 
 ## [Unreleased]
 
+### Added
+- Packaged provider `groq` (OpenAI-compatible, `llama-3.3-70b-versatile`); the `general` route is
+  now `gemma_direct` -> `groq` -> `openrouter` (provisional, for testing).
+
+### Fixed
+- The redactor no longer hides long lowercase model ids such as `anthropic/claude-3.5-sonnet`.
+- `kellu providers test` caps each probe at the provider's `timeout_s` and shows progress.
+- The OpenRouter default model is `openrouter/free`.
+
 ### Changed
 - The project is being rewritten in pure Rust. The Python prototype (milestones M0 to M2, 185 test
   cases) and the Ruby prototype are preserved on the `original-python` and `kellu-prototype-ruby`

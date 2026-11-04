@@ -155,7 +155,7 @@ fn config_check_with_defaults_succeeds_and_creates_nothing() {
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(
         text(&out.stdout).trim(),
-        "ok: 5 providers, 3 routes (packaged defaults only)"
+        "ok: 6 providers, 3 routes (packaged defaults only)"
     );
     assert_eq!(fs::read_dir(home.path()).unwrap().count(), 0);
 }
@@ -205,7 +205,7 @@ fn config_show_lists_providers_and_routes_without_secrets() {
     );
     assert!(stdout.contains("deepseek      openai_compat  deepseek-chat  https://api.deepseek.com/v1  (keyring: ai_deepseek_api_key)"), "{stdout}");
     assert!(
-        stdout.contains("general       gemma_direct -> google -> deepseek -> openrouter"),
+        stdout.contains("general       gemma_direct -> groq -> openrouter"),
         "{stdout}"
     );
     assert!(
