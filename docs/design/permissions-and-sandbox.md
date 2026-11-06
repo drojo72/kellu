@@ -12,7 +12,7 @@
 
 # Permissions and sandbox design
 
-Status: the building blocks of M3 (permissions, scope, `Grant`, audit log, deny globs, scrubbed environment) are implemented and tested in `kellu-security`; nothing consumes them until M4 and M5. The rest is design for milestones M4 and M5. It keeps the practical parts of an external proposal
+Status: the building blocks of M3 (permissions, scope, `Grant`, audit log, deny globs, scrubbed environment) are implemented and tested in `kellu-security`, and the sandbox of M4 is implemented and tested in `kellu-sandbox`; nothing consumes them until M5. The proposal, approval and apply flow is design for milestone M5. It keeps the practical parts of an external proposal
 (propose, approve, apply; hashes; audit) and drops what does not fit Kellu: a read-write sandbox
 for the model, overlayfs, and Kate-internal APIs that an external process cannot call.
 
@@ -101,7 +101,7 @@ change is undoable.
 ## Sandbox
 
 - Backend: bubblewrap. Build `argv` as a list and never use a shell. Mounts come from
-  the `kellu-sandbox` policy module, derived from the `Grant`; a test (`proptest`) asserts that the mounts equal the grant.
+  the `kellu-sandbox` policy module, derived from the `Grant`. Implemented as three tests rather than `proptest` (a large development dependency for one test): the policy equals what the grant lets the session read, the `argv` mounts only the staging directory outside the system, and the staging copy equals the grant for 400 generated hostile names with a fixed seed.
 - **Mount invariant:** bubblewrap never creates mountpoints inside a project tree. The project is
   always a leaf mount (read-only, or the staging directory) at a fixed destination on a fresh
   tmpfs root. No nested binds inside it and no symlinks in destination paths. This is what keeps
@@ -113,10 +113,13 @@ change is undoable.
   later update because of a Flatpak regression.
 - **Defaults:** `--unshare-all` (no network), `--clearenv` plus `PATH`, `HOME`, `TMPDIR`,
   `--die-with-parent`, `--new-session`, read-only system, tmpfs for `HOME` and `/tmp`, resource
-  limits (CPU time, address space, processes, file size), wall-clock timeout, process-group kill
-  and an output size cap.
+  limits (CPU time, address space, processes, file size, open files), wall-clock timeout,
+  process-group kill and an output size cap. **The limits run inside the sandbox**, applied by
+  `prlimit` around the command: applied around `bwrap`, `RLIMIT_NPROC` counts every process of the
+  user and stops bubblewrap from starting on a normal desktop (measured: 306 processes, limit 256).
+  `--unshare-user` is explicit and `--disable-userns` is set, so a missing user namespace is an error.
 - **Tools that write** (formatters, generators) run on a **staging copy** of the in-scope files
-  (reflink when available, size capped). The core diffs staging against the original; the result
+  (size capped; copied through the `openat2` scope, no reflink; always used, also for read-only runs, so the real project is never mounted). The core diffs staging against the original; the result
   re-enters as a proposal and goes through the same approval. Changes the proposal did not announce
   are reported, never applied. Tested behavior: with the project mounted read-only, writes and new
   files fail, host symlinks dangle, the environment is empty and only loopback exists; with a

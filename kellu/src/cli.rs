@@ -4,6 +4,7 @@
 
 use std::ffi::OsString;
 use std::io::Write;
+use std::path::Path;
 
 use std::sync::Arc;
 
@@ -128,6 +129,9 @@ pub type SecretReader = Box<dyn Fn(&str, &mut dyn Write) -> kellu_common::Result
 /// Builds a provider client from its configuration.
 pub type ProviderBuilder = Box<dyn Fn(&ProviderConfig, &KeyLookup) -> Box<dyn Provider>>;
 
+/// Probes the sandbox given the paths of `bwrap` and, if found, `prlimit`.
+pub type ProbeBox = Box<dyn Fn(&Path, Option<&Path>) -> kellu_sandbox::Probe>;
+
 /// Everything the commands reach outside the process through, so tests can replace it.
 pub struct Services {
     pub vault: VaultFactory,
@@ -135,6 +139,8 @@ pub struct Services {
     /// Builds the client `providers test` uses: same as `build_provider` but with a short total cap.
     pub build_probe: ProviderBuilder,
     pub load: Box<dyn Fn() -> kellu_common::Result<Config>>,
+    /// Probes bubblewrap (and `prlimit`) for `kellu doctor`.
+    pub probe: ProbeBox,
 }
 
 impl Services {
@@ -162,6 +168,9 @@ impl Services {
                 build_provider_capped(config, lookup, cap)
             }),
             load: Box::new(load),
+            probe: Box::new(|bwrap, prlimit| {
+                kellu_sandbox::probe(bwrap, prlimit, &kellu_sandbox::SystemLayout::host())
+            }),
         }
     }
 }
@@ -281,7 +290,12 @@ where
         return EXIT_OK;
     };
     match command {
-        Command::Doctor => doctor::run(&doctor::find_in_path, &*services.load, out),
+        Command::Doctor => doctor::run(
+            &doctor::find_in_path,
+            &*services.load,
+            &*services.probe,
+            out,
+        ),
         Command::Keys { action } => {
             let vault = match (services.vault)() {
                 Ok(vault) => vault,
@@ -425,6 +439,12 @@ mod tests {
             read_secret: Box::new(move |_, _| Ok(SecretString::from(typed.to_owned()))),
             build_probe: fake_builder(failing, Arc::clone(&seen_for_builder)),
             load: Box::new(defaults),
+            probe: Box::new(|_, _| kellu_sandbox::Probe {
+                version: Some(kellu_sandbox::FIRST_PATCHED),
+                isolation: Ok(()),
+                prlimit: true,
+                openat2: true,
+            }),
         };
         Harness {
             store,

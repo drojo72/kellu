@@ -37,7 +37,7 @@ flowchart TD
     tools["kellu-tools · M5"]:::todo
     proj["kellu-projects · M5"]:::todo
     prov["kellu-providers<br/>transport · OpenAI-compat · Google"]:::done
-    sbx["kellu-sandbox · M4"]:::todo
+    sbx["kellu-sandbox<br/>policy · staging · bubblewrap · limits"]:::done
     sec["kellu-security<br/>vault · redact · deny · scope · grant · audit"]:::done
     com["kellu-common<br/>errors · paths · text · net"]:::done
     bin --> fe --> core
@@ -87,7 +87,7 @@ kellu/
 │   ├── kellu-core/          M1  config, log, session; M2 router
 │       (created when their milestone starts)
 │       kellu-security/      vault, redaction, deny globs, permissions, scope, Grant, audit
-│       kellu-sandbox/       M4  backend trait, bubblewrap, policy from the Grant, staging
+│       kellu-sandbox/       M4  bubblewrap, policy from the Grant, staging, limits, probe
 │       kellu-tools/         M5  registry with mandatory risk level; files, shell, git
 │       kellu-projects/      M5  discovery, stack detection
 │       kellu-frontends/     M6  REPL, LSP, terminal theme
@@ -104,7 +104,7 @@ kellu/
 | M1 | done | `kellu-common`, `kellu-core`, `kellu-providers` (types) |
 | M2 | done, behavior parity 137/137 with the Python prototype (`porting/PARITY.md`) | `kellu-providers`, `kellu-core` (router), `kellu-common` (`AllProvidersFailed`) |
 | M3 | done | `kellu-security`, `kellu-core` (default redaction), `kellu` (`keys`, `providers test`) |
-| M4 | next | `kellu-sandbox` |
+| M4 | done | `kellu-sandbox`, `kellu-security` (`openat2_available`), `kellu-core` (`[sandbox]` config), `kellu` (`doctor`) |
 | M5 to M7 | planned | see Layout |
 
 ## Providers and router (M2)
@@ -157,7 +157,7 @@ Transport rules (`kellu-providers`, enforced by tests in `crates/kellu-providers
 | Local runtime detection | 0.5.0 | `kellu-providers`, module `local` |
 | Scope and grants | M3 (done; consumed from M4) | `kellu-security`, modules `scope`, `grant` |
 | Append-only audit log | M3 (done; consumed from M5) | `kellu-security`, module `audit` |
-| Sandbox mounts derived from a grant, staging copy | M4 | `kellu-sandbox`, modules `policy`, `staging` |
+| Sandbox mounts derived from a grant, staging copy | M4 (done; consumed from M5) | `kellu-sandbox`, modules `policy`, `staging`, `bwrap` |
 | Proposal contract and host-side apply | M5 | `kellu-tools`, modules `proposal`, `apply` |
 | Kate LSP server (hover, completion; later diagnostics, code actions) | M6, 0.2.0 | `kellu-frontends`, module `lsp` |
 

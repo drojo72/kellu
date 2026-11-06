@@ -49,6 +49,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   - `kellu-core`: sessions redact secrets by default (they used the identity function before).
   - Dependencies: `sha2` (and six RustCrypto crates below it), `zeroize` (already in the tree),
     `rustix` features `stdio` and `termios`.
+- **M4** (new work):
+  - `kellu-sandbox`: a policy derived from one `Grant` (readable files, network, profile `read-only`
+    or `workspace-write`, limits, scrubbed environment), a staging copy of the granted files made
+    through the `openat2` scope (private, size capped, deleted on drop) with `changes()` to report
+    what a tool modified, created, deleted or left unsafe, the bubblewrap command line (an `argv`
+    list, no shell, explicit `--unshare-user`, `--disable-userns`, all capabilities dropped, empty
+    `/home` and `/tmp`), resource limits through `prlimit` inside the sandbox, a wall-clock timeout
+    that kills the process group, an output cap and a probe of the host.
+  - `kellu doctor` checks that bubblewrap can build the sandbox with Kellu's exact options, its
+    version against 0.12.0 (a warning that names the advisory and the switch), that `prlimit` works
+    inside the sandbox and that the kernel has `openat2`.
+  - `config.toml`: `[sandbox] require_patched_bwrap` (default `false`).
+  - `kellu-security`: `openat2_available()`.
+  - No new external dependencies.
 - **M2** (parity with the Python prototype; completes the port, 137 of 137 test functions mapped):
   - `kellu-providers`: provider-neutral types, the `Provider` trait, an OpenAI-compatible client
     (chat, streaming, tool calls), a Google client (Gemini and Gemma, streaming), a registry and a

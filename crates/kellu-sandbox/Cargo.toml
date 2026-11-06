@@ -1,0 +1,20 @@
+[package]
+name = "kellu-sandbox"
+description = "Kellu sandbox: bubblewrap backend, policy derived from a Grant, staging copy, resource limits."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+kellu-common.workspace = true
+kellu-security.workspace = true
+rustix.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

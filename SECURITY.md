@@ -18,7 +18,7 @@ Kellu is an AI assistant that can read your code, call external model providers 
 >
 > **Implemented and tested so far (M0 to M3):** no side effects at startup or construction; state directories `0700` and files `0600`, opened without following symlinks and verified on the open descriptor (T8); strict, secret-free configuration (T11); log and session files that strip control and format characters, cannot forge structure and cannot be redirected through a symlink (T9, partly); the provider transport (redirects refused, keys only in headers and scrubbed from errors, size and duration limits, https enforced) and validation of provider responses and tool calls (T7, T11, partly); the keyring vault with tiers, secrets read only through stdin and never through arguments, scrubbed child environments (T3, T8); redaction v1 applied by default to session logs (T9, best effort); deny globs, project scope opened beneath a directory descriptor without following symlinks, grants, risk-based permissions and a hash-chained audit log, **as tested building blocks** (T2, T5, partly).
 >
-> **Not implemented yet:** the sandbox (M4), the tools that would use grants, permissions, scope, deny globs and the audit log (M5: until then nothing consumes them), the terminal REPL and the LSP server (M6, which will also start the application log). No command sends file context to a provider today (`kellu providers test` sends a fixed prompt), but when the front ends arrive the outbound path must apply deny globs and redaction first: redaction is **best effort** and uses a fixed `[REDACTED]` marker (reversible placeholders are planned). Do not point Kellu at files that contain secrets.
+> **Not wired up yet:** the sandbox is built and tested (M4), but no tool runs in it until M5; the tools that would use grants, permissions, scope, deny globs and the audit log (M5: until then nothing consumes them), the terminal REPL and the LSP server (M6, which will also start the application log). No command sends file context to a provider today (`kellu providers test` sends a fixed prompt), but when the front ends arrive the outbound path must apply deny globs and redaction first: redaction is **best effort** and uses a fixed `[REDACTED]` marker (reversible placeholders are planned). Do not point Kellu at files that contain secrets.
 
 ## Reporting a vulnerability
 
@@ -132,21 +132,25 @@ Full design: [docs/design/permissions-and-sandbox.md](docs/design/permissions-an
 
 ## Sandbox
 
-Process-spawning tools (shell, tests, formatters) run inside **bubblewrap** on Linux.
+Process-spawning tools (shell, tests, formatters) run inside **bubblewrap** on Linux. Built in M4 (crate `kellu-sandbox`) and covered by escape tests against a real bubblewrap; no tool uses it until M5.
 
-- **Defaults:** no network, read-only system, the project directory as the only writable path, ephemeral `/tmp`, scrubbed environment, `--die-with-parent`, new session.
-- **Not exposed:** `~/.ssh`, `~/.gnupg`, the keyring bus, other home directories.
-- **Profiles:** `read-only`, `workspace-write`, `network` (requires confirmation), and `unsafe` (explicit, per session, always logged).
-- **Fail closed:** if no backend is available, the shell tool is disabled. `kellu doctor` reports why.
-- **Project virtual environments** are mounted read-only by default, so a poisoned package cannot persist code that later runs outside the sandbox.
+- **A staging copy, never the real project.** Only the files the `Grant` lets the session read are copied (through the same `openat2` scope, so symlinks, special files, denied names such as `.env` and `id_rsa`, and anything outside the root stay out) into a private directory that is mounted at `/work`. The real project is not mounted, not even read-only. After a run, `Staging::changes()` reports what was modified, created, deleted or unsafe (symlinks, devices); nothing is written back by the sandbox.
+- **Defaults:** no network, read-only system directories (`/usr` and what merged-`/usr` systems link to it, plus the linker cache), empty tmpfs for `/home` and `/tmp`, an environment built from nothing (`PATH`, `HOME`, `TMPDIR` plus allowlisted locale variables, never anything that looks like a secret), all capabilities dropped, `--die-with-parent`, new session, and a PID namespace. Commands are an `argv` list after `--`: no shell, and the command can never be read as a bubblewrap option.
+- **Not exposed:** `~/.ssh`, `~/.gnupg`, the keyring bus, other home directories, `/etc` (except the linker cache), `/var`, `/run`, `/mnt`, `/media`. Escape tests assert this.
+- **User namespaces are required, not optional.** `--unshare-user` is explicit, so a missing user namespace is an error instead of a silent fallback to running unconfined with a setuid bubblewrap; `--disable-userns` stops the sandboxed process from creating more.
+- **Profiles:** `read-only` and `workspace-write` (both on the staging copy). Network is not a profile: it follows the `Grant` and requires confirmation. The `unsafe` profile is not implemented.
+- **Resource limits** (CPU time, address space, processes, file size, open files), a wall-clock timeout that kills the whole process group, and an output cap. The limits are applied by `prlimit` **inside** the sandbox, around the command. They cannot be applied around bubblewrap itself: `RLIMIT_NPROC` counts every process of the user, so a limit of 256 stops bubblewrap from creating namespaces on a desktop session with more processes (measured). If `prlimit` is missing, the run is refused instead of going ahead unlimited.
+- **Fail closed:** if bubblewrap cannot create the sandbox with these exact options, its version cannot be read, or limits are required but unavailable, nothing runs. `kellu doctor` reports why.
 
 Limits you should know:
 
 - A sandbox reduces damage; it is not a virtual machine. Kernel or backend vulnerabilities can defeat it. Memory safety in Rust is not isolation: the sandbox is.
-- Some distributions restrict unprivileged user namespaces (for example Ubuntu 24.04). `kellu doctor` will check this (M4).
-- The `network` profile deliberately weakens isolation.
+- There is no seccomp filter yet: isolation comes from namespaces, dropped capabilities and resource limits. Landlock and a syscall filter are later work.
+- Some distributions restrict unprivileged user namespaces (for example Ubuntu 24.04). `kellu doctor` checks this by building a real sandbox with Kellu's options and prints bubblewrap's own message when it fails.
+- The `network` profile deliberately weakens isolation, and name resolution inside the sandbox is not verified (`/etc/resolv.conf` is often a link into `/run`, which is not mounted).
+- Project virtual environments (`.venv`) are not mounted: symlinks are not copied, so a typical virtual environment does not work inside the sandbox yet.
 - macOS and Windows backends are later work; until then those platforms run with a reduced tool set.
-- **bubblewrap before 0.12.0 is affected by CVE-2026-87766** (symlink traversal while bubblewrap creates files in attacker-controlled content during setup). Kellu's mount layout never creates mountpoints inside a project tree, so the precondition does not hold, and `kellu doctor` will warn when the version is older (M4). Strict mode (`sandbox.require_patched_bwrap = true`) refuses to run below 0.12.0. Distribution packages may carry the fix without a matching version number, or may drop it again: check your distribution's changelog.
+- **bubblewrap before 0.12.0 is affected by CVE-2026-87766** (GHSA-pxhw-h44j-8pfx: symlink traversal while bubblewrap creates files in attacker-controlled content during setup; fixed in 0.12.0). Kellu's mount layout never creates mount points inside a project tree (the staging directory is a single leaf mount at `/work` on a fresh tmpfs root, with no nested binds), so the precondition does not hold. By default an older bubblewrap is accepted and `kellu doctor` warns. Strict mode (`sandbox.require_patched_bwrap = true` in `config.toml`) refuses to run below 0.12.0. Distribution packages may carry the fix without a matching version number, or may drop it again: check your distribution's changelog.
 
 ## Data egress and sanitization
 
@@ -173,7 +177,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 | M1 | Done | No side effects at startup or construction; strict, secret-free TOML configuration; rotating logs and session logs that sanitize control characters and cannot forge structure (the redaction hook is wired, the redactor arrives in M3) |
 | M2 | Done | Endpoints must be https (http only for localhost) and are rechecked by the transport; redirects are refused so keys are never replayed to another host; response, line and stream-duration limits; keys travel only in headers, are validated against header injection and scrubbed from every error message; provider responses and tool calls are validated (names, JSON arguments, counts); a stream fails over only before any text was delivered; per-provider timeouts and a total time budget |
 | M3 | Done | Keyring vault with tiers (a provider key name can only resolve into `ai_*`; `infra` and `db` have no read path), scrubbed environment, deny globs, redaction v1, risk-based permissions, project scope opened beneath a directory descriptor, `Grant`, hash-chained audit log, `kellu keys` and `kellu providers test`. Tested building blocks: nothing consumes grants, permissions, scope, deny globs or the audit log until M4 and M5 |
-| M4 | Planned | Sandbox backend, mounts derived from the `Grant`, staging copy, resource limits, `kellu doctor` (including the bubblewrap version warning), escape tests |
+| M4 | Done | Sandbox backend (bubblewrap, `argv` without a shell), policy derived from the `Grant`, staging copy, resource limits inside the sandbox, `kellu doctor` (isolation, bubblewrap version, `prlimit`, `openat2`), escape tests. Tested building block: no tool runs in the sandbox until M5 |
 | M5 | Planned | Tool registry requiring a declared risk level; proposal contract and host-side apply of approved hunks; host-side git and `gh` writes with confirmation |
 | M6 | Planned | LSP and REPL honoring deny globs and redaction |
 | 0.2.0 | Planned | Agent loop gated by the policy engine; injection-oriented tests |
@@ -182,7 +186,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 
 ## Hardening checklist for users
 
-- Install `bubblewrap` and run `kellu doctor`.
+- Install `bubblewrap` and `util-linux` (for `prlimit`) and run `kellu doctor`.
 - Keep infrastructure and database secrets out of the `provider` tier.
 - Use fine-grained, short-lived tokens; rotate anything that was ever exposed.
 - Prefer local-only mode for sensitive projects.

@@ -16,7 +16,7 @@
 
 **Secure and modular AI assistant for the Kate editor that thinks before spending tokens.**
 
-> **Status: pre-0.1.0.** Being rebuilt in Rust with a security-first design. Milestones M0 to M3 are done (workspace, strict configuration, private logs and sessions, `kellu doctor`, `kellu config`, model providers and the router with parity against the prototype, and the security layer: keyring vault, redaction, deny globs, scope, grants, permissions and audit log); everything from M4 on is still design. `kellu keys` and `kellu providers test` work; the assistant itself (REPL and LSP) does not exist yet. The earlier Python and Ruby prototypes live on the `original-python` and `kellu-prototype-ruby` branches and are the behavioral reference for the port. APIs, commands and configuration will change. Not yet released. Security model: see [SECURITY.md](SECURITY.md).
+> **Status: pre-0.1.0.** Being rebuilt in Rust with a security-first design. Milestones M0 to M4 are done (workspace, strict configuration, private logs and sessions, `kellu doctor`, `kellu config`, model providers and the router with parity against the prototype, the security layer: keyring vault, redaction, deny globs, scope, grants, permissions and audit log, and the bubblewrap sandbox with its escape tests); everything from M5 on is still design, and no tool runs in the sandbox yet. `kellu keys` and `kellu providers test` work; the assistant itself (REPL and LSP) does not exist yet. The earlier Python and Ruby prototypes live on the `original-python` and `kellu-prototype-ruby` branches and are the behavioral reference for the port. APIs, commands and configuration will change. Not yet released. Security model: see [SECURITY.md](SECURITY.md).
 
 ---
 

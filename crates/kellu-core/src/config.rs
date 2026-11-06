@@ -32,12 +32,20 @@ pub const FALLBACK_ROUTE: &str = "general";
 
 const DEFAULTS: &str = include_str!("defaults.toml");
 
-const TOP_KEYS: &[&str] = &["providers", "routing", "router", "logging", "sessions"];
+const TOP_KEYS: &[&str] = &[
+    "providers",
+    "routing",
+    "router",
+    "logging",
+    "sessions",
+    "sandbox",
+];
 const PROVIDER_KEYS: &[&str] = &["kind", "base_url", "model", "timeout_s", "keyring_name"];
 const ROUTE_KEYS: &[&str] = &["primary", "backup"];
 const ROUTER_KEYS: &[&str] = &["total_timeout_s"];
 const LOGGING_KEYS: &[&str] = &["level", "max_bytes", "backups"];
 const SESSIONS_KEYS: &[&str] = &["enabled", "max_entry_chars"];
+const SANDBOX_KEYS: &[&str] = &["require_patched_bwrap"];
 
 const SECRET_KEYS: &[&str] = &[
     "api_key",
@@ -93,6 +101,15 @@ pub struct SessionsConfig {
     pub max_entry_chars: usize,
 }
 
+/// Sandbox settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SandboxConfig {
+    /// Refuse a bubblewrap older than 0.12.0 (strict mode). Off by default: older versions are
+    /// allowed with a warning from `kellu doctor`, because Kellu never creates mount points inside
+    /// a project tree.
+    pub require_patched_bwrap: bool,
+}
+
 /// Validated, immutable configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -102,6 +119,7 @@ pub struct Config {
     router: RouterConfig,
     logging: LogSettings,
     sessions: SessionsConfig,
+    sandbox: SandboxConfig,
     source: Option<PathBuf>,
 }
 
@@ -140,6 +158,12 @@ impl Config {
     #[must_use]
     pub fn sessions(&self) -> &SessionsConfig {
         &self.sessions
+    }
+
+    /// Sandbox settings.
+    #[must_use]
+    pub fn sandbox(&self) -> &SandboxConfig {
+        &self.sandbox
     }
 
     /// The user file that was applied, if there was one.
@@ -465,6 +489,12 @@ pub fn parse_config(
         .unwrap_or(100),
     };
 
+    let sandbox_table = section(&merged, "sandbox")?.unwrap_or(&empty);
+    check_keys(sandbox_table, SANDBOX_KEYS, "sandbox")?;
+    let sandbox = SandboxConfig {
+        require_patched_bwrap: get_bool(sandbox_table, "require_patched_bwrap", "sandbox")?,
+    };
+
     Ok(Config {
         providers,
         routing,
@@ -472,6 +502,7 @@ pub fn parse_config(
         router,
         logging,
         sessions,
+        sandbox,
         source,
     })
 }
@@ -590,6 +621,12 @@ mod tests {
         );
         assert_eq!(config.routing().len(), 3);
         assert_eq!(config.router().total_timeout_s, 120.0);
+        assert_eq!(
+            config.sandbox(),
+            &SandboxConfig {
+                require_patched_bwrap: false
+            }
+        );
         assert_eq!(config.logging(), &LogSettings::default());
         assert_eq!(
             config.sessions(),
@@ -683,9 +720,23 @@ mod tests {
     }
 
     #[test]
+    fn the_sandbox_section_is_strict_and_can_turn_strict_mode_on() {
+        assert!(
+            message(with("[sandbox]\nunsafe_profile = true\n"))
+                .contains("sandbox: unknown key(s): unsafe_profile")
+        );
+        let config = with("[sandbox]\nrequire_patched_bwrap = true\n").unwrap();
+        assert!(config.sandbox().require_patched_bwrap);
+    }
+
+    #[test]
     fn wrong_types_are_rejected_with_the_key_path() {
         for (user, path) in [
             ("[sessions]\nenabled = \"yes\"\n", "sessions.enabled"),
+            (
+                "[sandbox]\nrequire_patched_bwrap = 1\n",
+                "sandbox.require_patched_bwrap",
+            ),
             ("[logging]\nbackups = 2.5\n", "logging.backups"),
             ("[providers.grok]\nmodel = 7\n", "providers.grok.model"),
             ("[providers.grok]\nmodel = \"  \"\n", "providers.grok.model"),

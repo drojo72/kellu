@@ -21,7 +21,7 @@ pub use deny::DenyGlobs;
 pub use grant::Grant;
 pub use permission::{Requirement, Risk, requirement};
 pub use redact::PatternRedactor;
-pub use scope::Scope;
+pub use scope::{Scope, openat2_available};
 pub use store::{EntryInfo, MemoryStore, SecretStore, SecretToolStore};
 pub use tier::Tier;
 pub use vault::{KeyInfo, LegacyEntry, Vault};

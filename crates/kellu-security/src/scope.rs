@@ -167,6 +167,27 @@ impl Scope {
     }
 }
 
+/// Whether this kernel (and any seccomp filter around it) allows `openat2` with the flags every
+/// project read uses. When it is `false`, [`Scope::open_file`] fails closed.
+#[must_use]
+pub fn openat2_available() -> bool {
+    let Ok(root) = rustix::fs::open(
+        "/",
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) else {
+        return false;
+    };
+    openat2(
+        &root,
+        ".",
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+        ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
+    )
+    .is_ok()
+}
+
 fn open_error(relative: &Path, errno: Errno) -> KelluError {
     match errno {
         Errno::XDEV | Errno::LOOP | Errno::MLINK => KelluError::security(format!(
