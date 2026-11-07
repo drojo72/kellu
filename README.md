@@ -49,25 +49,38 @@ Kellu brings AI assistance to [Kate](https://kate-editor.org/) without a heavy g
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    subgraph FE["Frontends"]
+        direction TB
+        T["Terminal"]
+        K["Kate (LSP)"]
+        G["Gateway*"]:::later
+        A["ACP*"]:::later
+        M["MCP*"]:::later
+    end
+    subgraph CORE["Kellu core (trusted: keys, network)"]
+        direction LR
+        S["scope"] --> R["rules*"]:::later --> Mem["memory*"]:::later --> San["sanitizer"] --> Rt["router"]
+        Rt --> P["provider"]
+        Rt --> Tl["tools<br/>risk levels, permissions"]
+    end
+    FE --> S
+    Tl --> SB["sandbox (bubblewrap)<br/>shell, tests, formatters"]
+    Tl --> H["host side, with confirmation<br/>git and gh writes"]
+    classDef default fill:#14253D,stroke:#C8A66A,color:#F4F0E7
+    classDef later fill:#F4F0E7,stroke:#B87355,color:#14253D,stroke-dasharray:4 3
+    style FE fill:none,stroke:#B87355
+    style CORE fill:none,stroke:#C8A66A
 ```
- Terminal   Kate (LSP)   Gateway*   ACP*   MCP*          <- frontends
-      \          |          |        |      /
- ========= Kellu core (trusted: keys, network) =========
-  scope -> rules* -> memory* -> sanitizer -> router -> provider
-                                            \-> tools (risk levels, permissions)
- =============================================================
-         |                                   |
-  sandbox (bubblewrap):               host side, with confirmation:
-  shell, tests, formatters            git and gh writes
 
-  * post-0.1.0
-```
+Dashed nodes marked `*` arrive after 0.1.0.
 
 The core has no UI and no side effects on import. Frontends, providers and stores are replaceable adapters. Dependency direction: `frontends → core → tools → sandbox → security → common`, with `providers` and `projects` also below `core` (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)). A test enforces it.
 
 ## Security at a glance
 
-- **Sandbox.** Process-spawning tools run under bubblewrap: no network by default, read-only system, project directory as the only writable path, scrubbed environment, no access to `~/.ssh`, `~/.gnupg` or the keyring bus.
+- **Sandbox.** Process-spawning tools run under bubblewrap: no network by default, read-only system, only a staging copy of the project mounted (the real project is never writable), scrubbed environment, no access to `~/.ssh`, `~/.gnupg` or the keyring bus.
 - **Key tiers.** `provider` keys are available in the normal flow. `infra` and `db` secrets (cloud, DNS, databases) are not reachable by the assistant unless explicitly enabled with confirmation.
 - **Risk levels.** Every tool is `read`, `write`, `destructive` or `network`. Destructive actions require typed confirmation. Git and GitHub writes run on the host, never inside the sandbox.
 - **Data egress.** Deny globs (`.env`, keys, certificates) and secret redaction run before anything is sent to a provider. Per-project local-only mode is planned.
@@ -107,7 +120,7 @@ kellu/
 │   ├── kellu-providers/   # types, HTTP transport, OpenAI-compatible and Google clients, registry
 │   ├── kellu-core/        # config, log, session, router (no side effects at startup)
 │   ├── kellu-security/    # vault, redaction, deny globs, permissions, scope, grants, audit
-│   ├── kellu-sandbox/     # (M4) backend trait, bubblewrap, policy, staging
+│   ├── kellu-sandbox/     # bubblewrap, policy derived from the Grant, staging, limits
 │   ├── kellu-projects/    # (M5) discovery, stack detection, scopes
 │   ├── kellu-tools/       # (M5) registry with mandatory risk level; files, shell, git
 │   └── kellu-frontends/   # (M6) REPL, LSP, terminal theme (later: gateway, ACP, MCP server)
@@ -116,7 +129,7 @@ kellu/
 └── packaging/             # desktop entry
 ```
 
-Crates are added **when their milestone starts**, not before. Present today: `kellu-common` (M0), `kellu-core` and `kellu-providers` (M1; clients, transport and router since M2) and `kellu-security` (M3). Still to come: `kellu-sandbox` (M4), `kellu-tools` and `kellu-projects` (M5), `kellu-frontends` (M6), and later a `kellu-memory` crate (0.4.0, SQLite and optional pgvector). The decision cascade lives in `kellu-core` (0.2.0 to 0.4.0) and the MCP client in `kellu-tools` (0.5.0). The dependency direction is enforced by Cargo (a cycle does not compile) and by a test over `cargo metadata`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PORTING.md](docs/PORTING.md).
+Crates are added **when their milestone starts**, not before. Present today: `kellu-common` (M0), `kellu-core` and `kellu-providers` (M1; clients, transport and router since M2), `kellu-security` (M3) and `kellu-sandbox` (M4). Still to come: `kellu-tools` and `kellu-projects` (M5), `kellu-frontends` (M6), and later a `kellu-memory` crate (0.4.0, SQLite and optional pgvector). The decision cascade lives in `kellu-core` (0.2.0 to 0.4.0) and the MCP client in `kellu-tools` (0.5.0). The dependency direction is enforced by Cargo (a cycle does not compile) and by a test over `cargo metadata`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PORTING.md](docs/PORTING.md).
 
 ## Quick start
 
@@ -203,7 +216,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 - [x] **M1** Config with packaged defaults, errors, logging, sessions; no side effects at startup
 - [x] **M2** Providers: OpenAI-compatible client (streaming, tools), Google, router with timeouts and fallback
 - [x] **M3** `kellu keys` with tiers, `kellu providers test`, scrubbed environment, deny globs, redaction v1, risk-based permissions, scope and grants, audit log
-- [ ] **M4** Sandbox: interface, bubblewrap backend, policies, `kellu doctor`, escape tests
+- [x] **M4** Sandbox: bubblewrap with a policy derived from the `Grant`, staging copy, resource limits, `kellu doctor`, escape tests against real bubblewrap
 - [ ] **M5** Tools with generated schemas and risk levels: files, sandboxed shell, read-only git; git/gh writes on host with confirmation
 - [ ] **M6** Terminal REPL on top of the core; LSP for Kate (hover, completion)
 - [ ] **M7** Documentation and 0.1.0 tag

@@ -49,25 +49,38 @@ Kellu lleva asistencia de IA a [Kate](https://kate-editor.org/) sin una pila gr�
 
 ## Arquitectura
 
+```mermaid
+flowchart LR
+    subgraph FE["Frontends"]
+        direction TB
+        T["Terminal"]
+        K["Kate (LSP)"]
+        G["Gateway*"]:::later
+        A["ACP*"]:::later
+        M["MCP*"]:::later
+    end
+    subgraph CORE["Núcleo de Kellu (confiable: claves, red)"]
+        direction LR
+        S["scope"] --> R["reglas*"]:::later --> Mem["memoria*"]:::later --> San["sanitizador"] --> Rt["router"]
+        Rt --> P["proveedor"]
+        Rt --> Tl["herramientas<br/>niveles de riesgo, permisos"]
+    end
+    FE --> S
+    Tl --> SB["sandbox (bubblewrap)<br/>shell, tests, formateadores"]
+    Tl --> H["lado host, con confirmación<br/>escrituras de git y gh"]
+    classDef default fill:#14253D,stroke:#C8A66A,color:#F4F0E7
+    classDef later fill:#F4F0E7,stroke:#B87355,color:#14253D,stroke-dasharray:4 3
+    style FE fill:none,stroke:#B87355
+    style CORE fill:none,stroke:#C8A66A
 ```
- Terminal   Kate (LSP)   Gateway*   ACP*   MCP*          <- frontends
-      \          |          |        |      /
- ========= Núcleo de Kellu (confiable: claves, red) =========
-  scope -> reglas* -> memoria* -> sanitizador -> router -> proveedor
-                                            \-> herramientas (niveles de riesgo, permisos)
- =============================================================
-         |                                   |
-  sandbox (bubblewrap):               lado host, con confirmación:
-  shell, tests, formateadores         escrituras de git y gh
 
-  * posterior a 0.1.0
-```
+Los nodos punteados marcados con `*` son posteriores a 0.1.0.
 
 El núcleo no tiene interfaz ni efectos secundarios al importarse. Frontends, proveedores y almacenes son adaptadores reemplazables. Dirección de dependencias: `frontends → core → tools → sandbox → security → common`, con `providers` y `projects` también por debajo de `core` (ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)). Un test lo hace cumplir.
 
 ## Seguridad de un vistazo
 
-- **Sandbox.** Las herramientas que lanzan procesos corren en bubblewrap: sin red por defecto, sistema en solo lectura, el proyecto como único directorio escribible, entorno depurado y sin acceso a `~/.ssh`, `~/.gnupg` ni al bus del keyring.
+- **Sandbox.** Las herramientas que lanzan procesos corren en bubblewrap: sin red por defecto, sistema en solo lectura, solo una copia de trabajo del proyecto montada (el proyecto real nunca es escribible), entorno depurado y sin acceso a `~/.ssh`, `~/.gnupg` ni al bus del keyring.
 - **Niveles de claves.** Las claves `provider` están disponibles en el flujo normal. Los secretos `infra` y `db` (nube, DNS, bases de datos) no son accesibles para el asistente salvo habilitación explícita con confirmación.
 - **Niveles de riesgo.** Cada herramienta es `read`, `write`, `destructive` o `network`. Las acciones destructivas requieren confirmación escrita. Las escrituras de git y GitHub corren en el host, nunca dentro del sandbox.
 - **Salida de datos.** Los deny globs (`.env`, claves, certificados) y la redacción de secretos se aplican antes de enviar algo a un proveedor. Se planea un modo solo local por proyecto.
@@ -107,7 +120,7 @@ kellu/
 │   ├── kellu-providers/   # tipos, transporte HTTP, clientes compatible OpenAI y Google, registro
 │   ├── kellu-core/        # config, log, sesiones, router (sin efectos al iniciar)
 │   ├── kellu-security/    # vault, redacción, deny globs, permisos, scope, grants, auditoría
-│   ├── kellu-sandbox/     # (M4) trait de backend, bubblewrap, política, staging
+│   ├── kellu-sandbox/     # bubblewrap, política derivada del Grant, staging, límites
 │   ├── kellu-projects/    # (M5) descubrimiento, detección de stack, scopes
 │   ├── kellu-tools/       # (M5) registro con nivel de riesgo obligatorio; archivos, shell, git
 │   └── kellu-frontends/   # (M6) REPL, LSP, tema de terminal (después: gateway, ACP, servidor MCP)
@@ -116,7 +129,7 @@ kellu/
 └── packaging/             # entrada de escritorio
 ```
 
-Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-common` (M0), `kellu-core` y `kellu-providers` (M1; clientes, transporte y router desde M2) y `kellu-security` (M3). Faltan `kellu-sandbox` (M4), `kellu-tools` y `kellu-projects` (M5), `kellu-frontends` (M6), y más adelante un crate `kellu-memory` (0.4.0, SQLite y pgvector opcional). La cascada de decisión vive en `kellu-core` (0.2.0 a 0.4.0) y el cliente MCP en `kellu-tools` (0.5.0). Cargo hace cumplir la dirección de dependencias (un ciclo no compila) y un test sobre `cargo metadata`. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [docs/PORTING.md](docs/PORTING.md).
+Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-common` (M0), `kellu-core` y `kellu-providers` (M1; clientes, transporte y router desde M2), `kellu-security` (M3) y `kellu-sandbox` (M4). Faltan `kellu-tools` y `kellu-projects` (M5), `kellu-frontends` (M6), y más adelante un crate `kellu-memory` (0.4.0, SQLite y pgvector opcional). La cascada de decisión vive en `kellu-core` (0.2.0 a 0.4.0) y el cliente MCP en `kellu-tools` (0.5.0). Cargo hace cumplir la dirección de dependencias (un ciclo no compila) y un test sobre `cargo metadata`. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [docs/PORTING.md](docs/PORTING.md).
 
 ## Inicio rápido
 
@@ -203,7 +216,7 @@ M0 a M2 se implementaron primero en el prototipo de Python y se portan con parid
 - [x] **M1** Configuración con defaults empaquetados, errores, logging, sesiones; sin efectos al iniciar
 - [x] **M2** Proveedores: cliente compatible con OpenAI (streaming, herramientas), Google, router con timeouts y respaldo
 - [x] **M3** `kellu keys` con niveles, `kellu providers test`, entorno depurado, deny globs, redacción v1, permisos por riesgo, scope y grants, auditoría
-- [ ] **M4** Sandbox: interfaz, backend bubblewrap, políticas, `kellu doctor`, tests de escape
+- [x] **M4** Sandbox: bubblewrap con política derivada del `Grant`, copia de trabajo (staging), límites de recursos, `kellu doctor`, tests de escape contra bubblewrap real
 - [ ] **M5** Herramientas con esquemas generados y niveles de riesgo: archivos, shell en sandbox, git de solo lectura; escrituras de git y gh en el host con confirmación
 - [ ] **M6** REPL en terminal sobre el núcleo; LSP para Kate (hover, completado)
 - [ ] **M7** Documentación y etiqueta 0.1.0

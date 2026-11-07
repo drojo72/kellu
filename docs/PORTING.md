@@ -166,7 +166,7 @@ kellu/
 ├── crates/
 │   ├── kellu-common/      errors, XDG paths, private files, text helpers, endpoint rules, UTC
 │   ├── kellu-security/    vault, redaction, deny globs, permissions, scope, grants, audit
-│   ├── kellu-sandbox/     backend trait, bubblewrap, policy, staging
+│   ├── kellu-sandbox/     bubblewrap, policy from the Grant, staging, limits
 │   ├── kellu-providers/   types, HTTP transport, OpenAI-compatible, Google, registry
 │   ├── kellu-projects/    discovery, stack detection, scopes
 │   ├── kellu-tools/       registry, proposal and apply, file, shell and git tools

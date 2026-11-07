@@ -12,7 +12,7 @@
 
 # Kellu: estado y decisiones (traspaso al proyecto Rust)
 
-Fecha: 2026-11-05 (actualizado al cierre de M4; el traspaso original es del 2026-10-29). Kellu se
+Fecha: 2026-11-07 (M4 cerrado e integrado en `main`; el traspaso original es del 2026-10-29). Kellu se
 reescribe en **Rust puro**. Hay dos prototipos anteriores en GitHub, ambos como **referencia de
 comportamiento** (no se mantienen):
 
@@ -105,7 +105,7 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | M0 | Hecho | **Hecho.** Workspace, toolchain fijada, `deny.toml`, CI, `kellu --version`, `doctor`, rutas XDG, archivos privados, errores, test de arquitectura |
 | M1 | Hecho | **Hecho (paridad).** Config TOML estricta, logging privado con gancho de redacción, sesiones, `config path|check|show`, comprobación de config en `doctor` |
 | M2 | Hecho | **Hecho (paridad).** Proveedores (OpenAI-compatible con streaming y herramientas, Google), transporte HTTP endurecido, router con respaldo |
-| M3 | Hecho | **Hecho** (los bloques de seguridad están probados; los consume M4/M5, ver sección 9.1). Bóveda de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
+| M3 | Hecho | **Hecho** (los bloques de seguridad están probados; los consume M5, ver sección 9.1). Bóveda de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
 | M4 | Hecho | **Hecho** (los bloques los consume M5, ver sección 9.1). Crate `kellu-sandbox`: política derivada del `Grant`, copia de trabajo, bubblewrap con `argv`, límites de recursos con `prlimit`, tiempo máximo y tope de salida; sondeo de bubblewrap, `prlimit` y `openat2` en `doctor`; `[sandbox] require_patched_bwrap`; tests de escape contra bubblewrap real |
 | M5 | No empezado | Registro de herramientas con riesgo obligatorio, propuesta y aplicación de diffs, archivos, shell en sandbox, git de lectura; escrituras de git y gh en el host con confirmación |
 | M6 | No empezado | REPL, LSP (hover y completion), tema de terminal |

@@ -51,7 +51,7 @@ flowchart TD
     classDef todo fill:#F4F0E7,stroke:#B87355,color:#14253D,stroke-dasharray:4 3
 ```
 
-Solid dark nodes exist today (M0 to M2); dashed nodes are created when their milestone starts.
+Solid dark nodes exist today (M0 to M4); dashed nodes are created when their milestone starts.
 In the code the binary calls `core` directly until `frontends` exists (M6).
 
 One edge goes beyond the earlier Python layering: `sandbox -> security`, because the sandbox
@@ -85,9 +85,9 @@ kellu/
 │   ├── kellu-common/        M0  identity, errors, XDG paths, private files; M1 text, net, utc
 │   ├── kellu-providers/     M1  provider types; M2 HTTP transport, OpenAI-compatible, Google, registry
 │   ├── kellu-core/          M1  config, log, session; M2 router
+│   ├── kellu-security/      M3  vault, redaction, deny globs, permissions, scope, Grant, audit
+│   ├── kellu-sandbox/       M4  bubblewrap, policy from the Grant, staging, limits, probe
 │       (created when their milestone starts)
-│       kellu-security/      vault, redaction, deny globs, permissions, scope, Grant, audit
-│       kellu-sandbox/       M4  bubblewrap, policy from the Grant, staging, limits, probe
 │       kellu-tools/         M5  registry with mandatory risk level; files, shell, git
 │       kellu-projects/      M5  discovery, stack detection
 │       kellu-frontends/     M6  REPL, LSP, terminal theme
