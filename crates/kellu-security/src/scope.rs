@@ -147,6 +147,34 @@ impl Scope {
         Ok(file)
     }
 
+    /// Open the directory `relative` (the empty path is the root) for the core's own file
+    /// operations, such as applying an approved proposal with `*at` calls relative to it.
+    ///
+    /// Opened with the same `openat2` flags as files: no `..`, no absolute path, no symlink on the
+    /// way. The directory itself must not be denied (so `.git/` can never be a destination).
+    ///
+    /// # Errors
+    /// The path is denied, escapes the root, crosses a symlink, is not a directory, or the kernel
+    /// lacks `openat2`.
+    pub fn open_dir(&self, relative: &Path) -> Result<OwnedFd> {
+        let is_root = relative.as_os_str().is_empty();
+        if !is_root && self.deny.is_denied(relative) {
+            return Err(KelluError::security(format!(
+                "{} is denied by policy",
+                relative.display()
+            )));
+        }
+        let path = if is_root { Path::new(".") } else { relative };
+        openat2(
+            &self.root_fd,
+            path,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+            ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS | ResolveFlags::NO_MAGICLINKS,
+        )
+        .map_err(|errno| open_error(relative, errno))
+    }
+
     /// Read at most `max_bytes` of the regular file `relative`.
     ///
     /// # Errors
@@ -246,6 +274,41 @@ mod tests {
         assert_eq!(
             scope(&f).read_file(Path::new("src/main.rs"), 1024).unwrap(),
             b"fn main() {}"
+        );
+    }
+
+    #[test]
+    fn a_project_directory_can_be_opened_and_the_root_is_the_empty_path() {
+        let f = fixture();
+        let scope = scope(&f);
+        assert!(scope.open_dir(Path::new("src")).is_ok());
+        assert!(scope.open_dir(Path::new("")).is_ok());
+    }
+
+    #[test]
+    fn directories_that_escape_cross_symlinks_or_are_denied_are_refused() {
+        let f = fixture();
+        symlink(&f.outside, f.project.join("link")).unwrap();
+        let scope = scope(&f);
+        for bad in [
+            "link",
+            "../outside",
+            "src/../../outside",
+            "/etc",
+            ".git",
+            "src/main.rs",
+        ] {
+            assert!(
+                scope.open_dir(Path::new(bad)).is_err(),
+                "{bad} must be refused"
+            );
+        }
+        assert!(
+            scope
+                .open_dir(Path::new("link/"))
+                .unwrap_err()
+                .to_string()
+                .contains("symlink")
         );
     }
 

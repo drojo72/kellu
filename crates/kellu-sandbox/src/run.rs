@@ -107,16 +107,67 @@ fn read_capped<R: Read>(reader: Option<R>, cap: usize, exceeded: &AtomicBool) ->
     data
 }
 
+/// A command that runs on the host, **outside** the sandbox, for the few tools that must (git and
+/// `gh`). It gets the same supervision as a sandboxed command: an empty environment plus only
+/// `env`, bounded output, a wall-clock timeout and its own process group that is killed on expiry.
+#[derive(Debug, Clone)]
+pub struct HostCommand<'a> {
+    /// The program (an absolute path) followed by its arguments. Never a shell line.
+    pub argv: &'a [OsString],
+    /// The whole environment of the process.
+    pub env: &'a [(OsString, OsString)],
+    /// The working directory.
+    pub cwd: &'a Path,
+    /// Bytes written to standard input (it is closed afterwards); none means no input.
+    pub stdin: Option<&'a [u8]>,
+    /// Wall-clock time after which the process group is killed.
+    pub wall_clock: Duration,
+    /// Bytes kept from each of stdout and stderr; more than this kills the process.
+    pub max_output_bytes: usize,
+}
+
+/// Run a [`HostCommand`].
+///
+/// # Errors
+/// The command is empty, the limits are zero, or the process cannot be started or read.
+pub fn run_host(command: &HostCommand<'_>) -> Result<Output> {
+    if command.wall_clock.is_zero() || command.max_output_bytes == 0 {
+        return Err(KelluError::security(
+            "a host command needs a timeout and an output cap",
+        ));
+    }
+    exec_with(command)
+}
+
 /// Run `argv` (program first) with an empty environment, no stdin, bounded output and a wall-clock
 /// timeout, in its own process group.
 pub(crate) fn exec(argv: &[OsString], wall_clock: Duration, max_output: usize) -> Result<Output> {
-    let (program, rest) = argv
+    exec_with(&HostCommand {
+        argv,
+        env: &[],
+        cwd: Path::new("."),
+        stdin: None,
+        wall_clock,
+        max_output_bytes: max_output,
+    })
+}
+
+fn exec_with(command: &HostCommand<'_>) -> Result<Output> {
+    let (program, rest) = command
+        .argv
         .split_first()
         .ok_or_else(|| KelluError::security("there is no command to run"))?;
+    let (wall_clock, max_output) = (command.wall_clock, command.max_output_bytes);
     let mut child = Command::new(program)
         .args(rest)
         .env_clear()
-        .stdin(Stdio::null())
+        .envs(command.env.iter().map(|(k, v)| (k, v)))
+        .current_dir(command.cwd)
+        .stdin(if command.stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0)
@@ -124,11 +175,18 @@ pub(crate) fn exec(argv: &[OsString], wall_clock: Duration, max_output: usize) -
         .map_err(|e| KelluError::io(Path::new(program), e))?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
+    let stdin = child.stdin.take();
     let exceeded = AtomicBool::new(false);
     let deadline = Instant::now() + wall_clock;
     thread::scope(|scope| {
         let out = scope.spawn(|| read_capped(stdout, max_output, &exceeded));
         let err = scope.spawn(|| read_capped(stderr, max_output, &exceeded));
+        if let (Some(mut pipe), Some(input)) = (stdin, command.stdin) {
+            // A command that stops reading early makes this a broken pipe; that is not an error.
+            scope.spawn(move || {
+                let _ = std::io::Write::write_all(&mut pipe, input);
+            });
+        }
         let outcome = loop {
             match child.try_wait() {
                 Ok(Some(status)) => break Ok(outcome_of(status)),

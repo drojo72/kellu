@@ -218,6 +218,13 @@ pub fn collect_checks(which: Which<'_>, load: ConfigLoader<'_>, probe: ProbeFn<'
         "git tools are unavailable",
         "Debian/Ubuntu: sudo apt install git",
     ));
+    checks.push(tool_check(
+        which,
+        "gh",
+        false,
+        "the pull request tool is unavailable",
+        "see https://cli.github.com",
+    ));
     checks
 }
 

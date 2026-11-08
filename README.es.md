@@ -16,7 +16,7 @@
 
 **Asistente de IA seguro y modular para el editor Kate, que piensa antes de gastar tokens.**
 
-> **Estado: pre-0.1.0.** Se reconstruye en Rust con diseño de seguridad primero. Los hitos M0 a M4 están hechos (workspace, configuración estricta, logs y sesiones privados, `kellu doctor`, `kellu config`, proveedores de modelos y router con paridad respecto del prototipo, la capa de seguridad: bóveda de claves, redacción, deny globs, scope, grants, permisos y auditoría, y el sandbox con bubblewrap y sus tests de escape); desde M5 en adelante sigue siendo diseño, y ninguna herramienta corre aún en el sandbox. `kellu keys` y `kellu providers test` funcionan; el asistente en sí (REPL y LSP) aún no existe. Los prototipos anteriores en Python y Ruby viven en las ramas `original-python` y `kellu-prototype-ruby` y son la referencia de comportamiento del port. Las APIs, comandos y configuración cambiarán. Aún no hay versión publicada. Modelo de seguridad: ver [SECURITY.md](SECURITY.md).
+> **Estado: pre-0.1.0.** Se reconstruye en Rust con diseño de seguridad primero. Los hitos M0 a M5 están hechos (workspace, configuración estricta, logs y sesiones privados, `kellu doctor`, `kellu config`, proveedores de modelos y router con paridad respecto del prototipo, la capa de seguridad: bóveda de claves, redacción, deny globs, scope, grants, permisos y auditoría, el sandbox con bubblewrap y sus tests de escape, y las herramientas: un registro con riesgo obligatorio por herramienta, cambios propuestos que solo el núcleo aplica tras tu aprobación, comandos en sandbox y git endurecido); el REPL y el LSP (M6) siguen siendo diseño, así que nada llama aún a las herramientas. `kellu keys`, `kellu providers test` y `kellu tools` funcionan; el asistente en sí aún no existe. Los prototipos anteriores en Python y Ruby viven en las ramas `original-python` y `kellu-prototype-ruby` y son la referencia de comportamiento del port. Las APIs, comandos y configuración cambiarán. Aún no hay versión publicada. Modelo de seguridad: ver [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -122,14 +122,14 @@ kellu/
 │   ├── kellu-security/    # vault, redacción, deny globs, permisos, scope, grants, auditoría
 │   ├── kellu-sandbox/     # bubblewrap, política derivada del Grant, staging, límites
 │   ├── kellu-projects/    # (M5) descubrimiento, detección de stack, scopes
-│   ├── kellu-tools/       # (M5) registro con nivel de riesgo obligatorio; archivos, shell, git
+│   ├── kellu-tools/       # registro con nivel de riesgo obligatorio; propuestas y aplicación; archivos, shell, git, gh
 │   └── kellu-frontends/   # (M6) REPL, LSP, tema de terminal (después: gateway, ACP, servidor MCP)
 ├── kellu/                 # crate binario: CLI, doctor
 ├── docs/                  # ARCHITECTURE.md, PORTING.md, porting/, notas de diseño
 └── packaging/             # entrada de escritorio
 ```
 
-Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-common` (M0), `kellu-core` y `kellu-providers` (M1; clientes, transporte y router desde M2), `kellu-security` (M3) y `kellu-sandbox` (M4). Faltan `kellu-tools` y `kellu-projects` (M5), `kellu-frontends` (M6), y más adelante un crate `kellu-memory` (0.4.0, SQLite y pgvector opcional). La cascada de decisión vive en `kellu-core` (0.2.0 a 0.4.0) y el cliente MCP en `kellu-tools` (0.5.0). Cargo hace cumplir la dirección de dependencias (un ciclo no compila) y un test sobre `cargo metadata`. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [docs/PORTING.md](docs/PORTING.md).
+Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-common` (M0), `kellu-core` y `kellu-providers` (M1; clientes, transporte y router desde M2), `kellu-security` (M3), `kellu-sandbox` (M4) y `kellu-tools` (M5). Faltan `kellu-projects`, `kellu-frontends` (M6), y más adelante un crate `kellu-memory` (0.4.0, SQLite y pgvector opcional). La cascada de decisión vive en `kellu-core` (0.2.0 a 0.4.0) y el cliente MCP en `kellu-tools` (0.5.0). Cargo hace cumplir la dirección de dependencias (un ciclo no compila) y un test sobre `cargo metadata`. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [docs/PORTING.md](docs/PORTING.md).
 
 ## Inicio rápido
 
@@ -217,7 +217,7 @@ M0 a M2 se implementaron primero en el prototipo de Python y se portan con parid
 - [x] **M2** Proveedores: cliente compatible con OpenAI (streaming, herramientas), Google, router con timeouts y respaldo
 - [x] **M3** `kellu keys` con niveles, `kellu providers test`, entorno depurado, deny globs, redacción v1, permisos por riesgo, scope y grants, auditoría
 - [x] **M4** Sandbox: bubblewrap con política derivada del `Grant`, copia de trabajo (staging), límites de recursos, `kellu doctor`, tests de escape contra bubblewrap real
-- [ ] **M5** Herramientas con esquemas generados y niveles de riesgo: archivos, shell en sandbox, git de solo lectura; escrituras de git y gh en el host con confirmación
+- [x] **M5** Herramientas con esquemas declarados y niveles de riesgo: archivos, shell en sandbox, git de solo lectura; escrituras de git y gh en el host con confirmación
 - [ ] **M6** REPL en terminal sobre el núcleo; LSP para Kate (hover, completado)
 - [ ] **M7** Documentación y etiqueta 0.1.0
 

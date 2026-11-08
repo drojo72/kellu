@@ -146,7 +146,7 @@ Still proposed (confirm and justify per milestone):
 |---|---|---|
 | Capability-based file access | `rustix` `openat2` (chosen over `cap-std`: one dependency fewer) | M3 |
 | Hashing | `sha2` | M3 (done) |
-| Diffs | `similar`, own or `diffy` applier | M5 |
+| Diffs | own: hunks resolved to byte offsets against a SHA-256 (no crate); `similar` stays a candidate for a rendered diff | M5 (done) |
 | Gitignore | `ignore` | M3 or M5 |
 | LSP | `lsp-server`, `lsp-types` | M6 |
 | Sandbox fallback | `landlock` | later |

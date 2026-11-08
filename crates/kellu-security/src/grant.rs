@@ -121,6 +121,16 @@ impl Grant {
         self.network = true;
     }
 
+    /// The same grant with the network switched off, for work that must never reach it even
+    /// when the session allows the network for something else (a command that runs by itself).
+    #[must_use]
+    pub fn without_network(&self) -> Self {
+        Self {
+            network: false,
+            ..self.clone()
+        }
+    }
+
     /// Whether the grant has expired at time `now`.
     #[must_use]
     pub fn is_expired(&self, now: Instant) -> bool {
@@ -235,6 +245,23 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn a_copy_without_network_keeps_everything_else() {
+        let (_tmp, scope) = scope();
+        let now = Instant::now();
+        let mut grant = Grant::read_only(&scope, files(&["a.rs"]), now, TTL);
+        grant
+            .approve_write(&scope, PathBuf::from("a.rs"), None)
+            .unwrap();
+        grant.allow_network();
+        let offline = grant.without_network();
+        assert!(grant.allows_network(now), "the original keeps its network");
+        assert!(!offline.allows_network(now));
+        assert!(offline.can_read(Path::new("a.rs"), now));
+        assert!(offline.write_approval(Path::new("a.rs"), now).is_some());
+        assert!(offline.is_expired(now + TTL));
     }
 
     #[test]

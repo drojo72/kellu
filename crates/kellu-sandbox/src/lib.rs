@@ -17,5 +17,5 @@ pub use bwrap::{BwrapVersion, FIRST_PATCHED};
 pub use limits::Limits;
 pub use policy::{Access, Policy, Profile, SystemEntry, SystemLayout};
 pub use probe::{Probe, probe};
-pub use run::{Outcome, Output, Sandbox};
+pub use run::{HostCommand, Outcome, Output, Sandbox, run_host};
 pub use staging::{Change, SkipReason, Skipped, Staging, StagingLimits};

@@ -5,6 +5,7 @@ mod doctor;
 mod input;
 mod keys;
 mod providers_cmd;
+mod tools_cmd;
 
 use std::io;
 use std::process::ExitCode;

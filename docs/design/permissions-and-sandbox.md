@@ -12,7 +12,7 @@
 
 # Permissions and sandbox design
 
-Status: the building blocks of M3 (permissions, scope, `Grant`, audit log, deny globs, scrubbed environment) are implemented and tested in `kellu-security`, and the sandbox of M4 is implemented and tested in `kellu-sandbox`; nothing consumes them until M5. The proposal, approval and apply flow is design for milestone M5. It keeps the practical parts of an external proposal
+Status: the building blocks of M3 (permissions, scope, `Grant`, audit log, deny globs, scrubbed environment) are implemented and tested in `kellu-security`, and the sandbox of M4 is implemented and tested in `kellu-sandbox`; the tools of M5 consume them (`kellu-tools`), and nothing consumes the tools until M6. The proposal, approval and apply flow is implemented in M5 (`kellu-tools`, modules `proposal` and `apply`) with two simplifications that keep the guarantees: a hunk is a replacement resolved to a byte offset against the hash the user saw (no unified-diff parser), and approval is per item or per hunk. It keeps the practical parts of an external proposal
 (propose, approve, apply; hashes; audit) and drops what does not fit Kellu: a read-write sandbox
 for the model, overlayfs, and Kate-internal APIs that an external process cannot call.
 
