@@ -16,7 +16,7 @@
 
 **Secure and modular AI assistant for the Kate editor that thinks before spending tokens.**
 
-> **Status: pre-0.1.0.** Being rebuilt in Rust with a security-first design. Milestones M0 to M4 are done (workspace, strict configuration, private logs and sessions, `kellu doctor`, `kellu config`, model providers and the router with parity against the prototype, the security layer: keyring vault, redaction, deny globs, scope, grants, permissions and audit log, and the bubblewrap sandbox with its escape tests); everything from M5 on is still design, and no tool runs in the sandbox yet. `kellu keys` and `kellu providers test` work; the assistant itself (REPL and LSP) does not exist yet. The earlier Python and Ruby prototypes live on the `original-python` and `kellu-prototype-ruby` branches and are the behavioral reference for the port. APIs, commands and configuration will change. Not yet released. Security model: see [SECURITY.md](SECURITY.md).
+> **Status: pre-0.1.0.** Being rebuilt in Rust with a security-first design. Milestones M0 to M5 are done (workspace, strict configuration, private logs and sessions, `kellu doctor`, `kellu config`, model providers and the router with parity against the prototype, the security layer: keyring vault, redaction, deny globs, scope, grants, permissions and audit log, the bubblewrap sandbox with its escape tests, and the tools: a registry with a mandatory risk per tool, proposed changes that only the core applies after you approve them, sandboxed commands and hardened git); the REPL and LSP (M6) are still design, so nothing calls the tools yet. `kellu keys`, `kellu providers test` and `kellu tools` work; the assistant itself does not exist yet. The earlier Python and Ruby prototypes live on the `original-python` and `kellu-prototype-ruby` branches and are the behavioral reference for the port. APIs, commands and configuration will change. Not yet released. Security model: see [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -122,14 +122,14 @@ kellu/
 │   ├── kellu-security/    # vault, redaction, deny globs, permissions, scope, grants, audit
 │   ├── kellu-sandbox/     # bubblewrap, policy derived from the Grant, staging, limits
 │   ├── kellu-projects/    # (M5) discovery, stack detection, scopes
-│   ├── kellu-tools/       # (M5) registry with mandatory risk level; files, shell, git
+│   ├── kellu-tools/       # registry with mandatory risk level; proposals and apply; files, shell, git, gh
 │   └── kellu-frontends/   # (M6) REPL, LSP, terminal theme (later: gateway, ACP, MCP server)
 ├── kellu/                 # binary crate: CLI, doctor
 ├── docs/                  # ARCHITECTURE.md, PORTING.md, porting/, design notes
 └── packaging/             # desktop entry
 ```
 
-Crates are added **when their milestone starts**, not before. Present today: `kellu-common` (M0), `kellu-core` and `kellu-providers` (M1; clients, transport and router since M2), `kellu-security` (M3) and `kellu-sandbox` (M4). Still to come: `kellu-tools` and `kellu-projects` (M5), `kellu-frontends` (M6), and later a `kellu-memory` crate (0.4.0, SQLite and optional pgvector). The decision cascade lives in `kellu-core` (0.2.0 to 0.4.0) and the MCP client in `kellu-tools` (0.5.0). The dependency direction is enforced by Cargo (a cycle does not compile) and by a test over `cargo metadata`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PORTING.md](docs/PORTING.md).
+Crates are added **when their milestone starts**, not before. Present today: `kellu-common` (M0), `kellu-core` and `kellu-providers` (M1; clients, transport and router since M2), `kellu-security` (M3), `kellu-sandbox` (M4) and `kellu-tools` (M5). Still to come: `kellu-projects`, `kellu-frontends` (M6), and later a `kellu-memory` crate (0.4.0, SQLite and optional pgvector). The decision cascade lives in `kellu-core` (0.2.0 to 0.4.0) and the MCP client in `kellu-tools` (0.5.0). The dependency direction is enforced by Cargo (a cycle does not compile) and by a test over `cargo metadata`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PORTING.md](docs/PORTING.md).
 
 ## Quick start
 
@@ -217,7 +217,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 - [x] **M2** Providers: OpenAI-compatible client (streaming, tools), Google, router with timeouts and fallback
 - [x] **M3** `kellu keys` with tiers, `kellu providers test`, scrubbed environment, deny globs, redaction v1, risk-based permissions, scope and grants, audit log
 - [x] **M4** Sandbox: bubblewrap with a policy derived from the `Grant`, staging copy, resource limits, `kellu doctor`, escape tests against real bubblewrap
-- [ ] **M5** Tools with generated schemas and risk levels: files, sandboxed shell, read-only git; git/gh writes on host with confirmation
+- [x] **M5** Tools with declared schemas and risk levels: files, sandboxed shell, read-only git; git/gh writes on host with confirmation
 - [ ] **M6** Terminal REPL on top of the core; LSP for Kate (hover, completion)
 - [ ] **M7** Documentation and 0.1.0 tag
 

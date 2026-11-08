@@ -16,6 +16,7 @@ authors = ["<copyright holder>"]
 kellu-common = { path = "crates/kellu-common", version = "0.1.0-dev.0" }
 kellu-security = { path = "crates/kellu-security", version = "0.1.0-dev.0" }
 kellu-sandbox = { path = "crates/kellu-sandbox", version = "0.1.0-dev.0" }
+kellu-tools = { path = "crates/kellu-tools", version = "0.1.0-dev.0" }
 kellu-providers = { path = "crates/kellu-providers", version = "0.1.0-dev.0" }
 kellu-core = { path = "crates/kellu-core", version = "0.1.0-dev.0" }
 

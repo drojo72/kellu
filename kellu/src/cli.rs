@@ -15,7 +15,7 @@ use kellu_providers::{KeyLookup, Provider, ProviderConfig, build_provider_capped
 use kellu_security::{SecretToolStore, Vault};
 use secrecy::SecretString;
 
-use crate::{doctor, input, keys, providers_cmd};
+use crate::{doctor, input, keys, providers_cmd, tools_cmd};
 
 /// Success.
 pub const EXIT_OK: u8 = 0;
@@ -54,7 +54,7 @@ enum Command {
         #[command(subcommand)]
         action: ProvidersAction,
     },
-    /// (planned for M5)
+    /// List the tools the assistant may use and what each needs from you
     Tools,
     /// (planned for M6)
     Lsp,
@@ -106,9 +106,12 @@ impl Command {
     /// The milestone that will implement a command that is only planned.
     fn planned(&self) -> Option<(&'static str, &'static str)> {
         match self {
-            Self::Tools => Some(("tools", "M5")),
             Self::Lsp => Some(("lsp", "M6")),
-            Self::Doctor | Self::Config { .. } | Self::Keys { .. } | Self::Providers { .. } => None,
+            Self::Doctor
+            | Self::Tools
+            | Self::Config { .. }
+            | Self::Keys { .. }
+            | Self::Providers { .. } => None,
         }
     }
 }
@@ -332,6 +335,7 @@ where
             };
             providers_cmd::test(&config, name.as_deref(), &vault, services, out, err)
         }
+        Command::Tools => tools_cmd::list(out, err),
         Command::Config { action } => match action {
             ConfigAction::Path => config_path(out, err),
             ConfigAction::Check => config_check(out, err),

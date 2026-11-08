@@ -49,6 +49,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   - `kellu-core`: sessions redact secrets by default (they used the identity function before).
   - Dependencies: `sha2` (and six RustCrypto crates below it), `zeroize` (already in the tree),
     `rustix` features `stdio` and `termios`.
+- **M5** (new work):
+  - `kellu-tools` (new crate): a registry in which every tool declares its risk (a required
+    argument of `ToolSpec::new`, pinned per tool by a test) and where the requirement for that risk
+    is enforced before the tool runs; what a tool returns is redacted, stripped of control
+    characters and bounded. Tools: `list_files`, `read_file`, `search_text`, `propose_edit`,
+    `propose_create`, `propose_delete`, `run_command` (sandbox), `git_status`, `git_diff`,
+    `git_log`, `git_commit`, `git_push`, `gh_pr_create`.
+  - Proposals: edits are resolved to byte offsets against the SHA-256 of the file the user is
+    shown, so approving some hunks is a plain selection. Only `apply` writes, through a directory
+    descriptor opened beneath the project root: it rechecks every hash, keeps a private backup of
+    the originals, writes through a temporary file and an atomic rename, and undoes what it did if
+    a later step fails. Deleting needs the path typed.
+  - `run_command` runs on the staging copy without network (even when the session allows network
+    for `git push`); with `write_back` its changes return as a proposal.
+  - Git and `gh` run on the host with a scrubbed environment; reads switch off every setting a
+    repository could use to run a program, refuse a repository whose `.git/config` names a filter
+    driver, and hide files the deny list hides. There is no force push, `--amend`, branch deletion
+    or hook execution.
+  - `kellu tools` lists the tools with their risk; `kellu doctor` also looks for `gh`.
+  - `kellu-security`: `Scope::open_dir`, `Grant::without_network`. `kellu-sandbox`: `run_host`
+    (the same timeout and output cap for the few commands that cannot run in the sandbox).
+  - No new external dependencies; `Cargo.lock` only gains the crate.
 - **M4** (new work):
   - `kellu-sandbox`: a policy derived from one `Grant` (readable files, network, profile `read-only`
     or `workspace-write`, limits, scrubbed environment), a staging copy of the granted files made

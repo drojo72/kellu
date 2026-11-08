@@ -59,15 +59,44 @@ fn unknown_command_is_a_usage_error() {
 #[test]
 fn planned_commands_report_not_implemented() {
     let home = TempDir::new().unwrap();
-    for (command, milestone) in [("tools", "M5"), ("lsp", "M6")] {
-        let out = kellu(&[command], home.path(), home.path());
-        assert_eq!(out.status.code(), Some(3), "{command}");
-        let stderr = text(&out.stderr);
-        assert!(
-            stderr.contains("not implemented yet") && stderr.contains(milestone),
-            "{stderr}"
-        );
+    let out = kellu(&["lsp"], home.path(), home.path());
+    assert_eq!(out.status.code(), Some(3));
+    let stderr = text(&out.stderr);
+    assert!(
+        stderr.contains("not implemented yet") && stderr.contains("M6"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn tools_lists_every_tool_with_its_risk_and_creates_nothing() {
+    let home = TempDir::new().unwrap();
+    let out = kellu(&["tools"], home.path(), home.path());
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let listing = text(&out.stdout);
+    for (name, risk) in [
+        ("list_files", "read"),
+        ("run_command", "read"),
+        ("git_commit", "write"),
+        ("git_push", "network"),
+        ("gh_pr_create", "network"),
+    ] {
+        let line = listing
+            .lines()
+            .find(|l| l.starts_with(name))
+            .unwrap_or_else(|| panic!("{name}: {listing}"));
+        assert!(line.contains(risk), "{line}");
     }
+    assert!(
+        listing.contains("only with network permission"),
+        "{listing}"
+    );
+    assert!(listing.contains("never written by a tool"), "{listing}");
+    assert_eq!(
+        std::fs::read_dir(home.path()).unwrap().count(),
+        0,
+        "listing the tools must not create anything"
+    );
 }
 
 #[test]

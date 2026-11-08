@@ -24,7 +24,7 @@ dependency rule that tests enforce (`kellu/tests/architecture.rs`).
 | `kellu-sandbox` | Sandbox interface, bubblewrap backend, profiles, policy derived from a `Grant`, staging. | `common`, `security` |
 | `kellu-providers` | Model provider clients (OpenAI-compatible, Google), HTTP transport, provider-neutral types. They receive their configuration and a key lookup; they never read either themselves. | `common` |
 | `kellu-projects` | Project discovery, stack detection. | `common` |
-| `kellu-tools` | Tool registry with schemas and mandatory risk levels; file, shell, git tools. | `common`, `security`, `sandbox` |
+| `kellu-tools` | Tool registry with schemas and mandatory risk levels; proposals and their approved application; file, shell, git and `gh` tools. | `common`, `security`, `sandbox` |
 | `kellu-core` | Config, router (task classification, fallback chains, time budget), logging, sessions, (later) cascade and agent loop. | all layers above |
 | `kellu-frontends` | Terminal REPL, Kate LSP, (later) gateway, ACP, MCP server. | all layers above and `core` |
 | `kellu` (binary) | CLI and `doctor`. | everything |
@@ -34,7 +34,7 @@ flowchart TD
     bin["kellu (binary)<br/>CLI · doctor"]:::done
     fe["kellu-frontends<br/>REPL · LSP · M6"]:::todo
     core["kellu-core<br/>config · log · session · router"]:::done
-    tools["kellu-tools · M5"]:::todo
+    tools["kellu-tools<br/>registry · proposals · apply · files · shell · git"]:::done
     proj["kellu-projects · M5"]:::todo
     prov["kellu-providers<br/>transport · OpenAI-compat · Google"]:::done
     sbx["kellu-sandbox<br/>policy · staging · bubblewrap · limits"]:::done
@@ -86,9 +86,9 @@ kellu/
 │   ├── kellu-providers/     M1  provider types; M2 HTTP transport, OpenAI-compatible, Google, registry
 │   ├── kellu-core/          M1  config, log, session; M2 router
 │   ├── kellu-security/      M3  vault, redaction, deny globs, permissions, scope, Grant, audit
-│   ├── kellu-sandbox/       M4  bubblewrap, policy from the Grant, staging, limits, probe
+│   ├── kellu-sandbox/       M4  bubblewrap, policy from the Grant, staging, limits, probe; M5 run_host
+│   ├── kellu-tools/         M5  registry with mandatory risk level, proposals and apply, files, shell, git, gh
 │       (created when their milestone starts)
-│       kellu-tools/         M5  registry with mandatory risk level; files, shell, git
 │       kellu-projects/      M5  discovery, stack detection
 │       kellu-frontends/     M6  REPL, LSP, terminal theme
 ├── kellu/                   M0  binary crate: CLI, doctor; tests/ has end-to-end and architecture
@@ -105,7 +105,8 @@ kellu/
 | M2 | done, behavior parity 137/137 with the Python prototype (`porting/PARITY.md`) | `kellu-providers`, `kellu-core` (router), `kellu-common` (`AllProvidersFailed`) |
 | M3 | done | `kellu-security`, `kellu-core` (default redaction), `kellu` (`keys`, `providers test`) |
 | M4 | done | `kellu-sandbox`, `kellu-security` (`openat2_available`), `kellu-core` (`[sandbox]` config), `kellu` (`doctor`) |
-| M5 to M7 | planned | see Layout |
+| M5 | done | `kellu-tools`, `kellu-security` (`Scope::open_dir`, `Grant::without_network`), `kellu-sandbox` (`run_host`), `kellu` (`tools`, `doctor`) |
+| M6 to M7 | planned | see Layout |
 
 ## Providers and router (M2)
 
@@ -158,7 +159,8 @@ Transport rules (`kellu-providers`, enforced by tests in `crates/kellu-providers
 | Scope and grants | M3 (done; consumed from M4) | `kellu-security`, modules `scope`, `grant` |
 | Append-only audit log | M3 (done; consumed from M5) | `kellu-security`, module `audit` |
 | Sandbox mounts derived from a grant, staging copy | M4 (done; consumed from M5) | `kellu-sandbox`, modules `policy`, `staging`, `bwrap` |
-| Proposal contract and host-side apply | M5 | `kellu-tools`, modules `proposal`, `apply` |
+| Proposal contract and host-side apply | M5 (done) | `kellu-tools`, modules `proposal`, `apply` |
+| Tool registry, risk enforcement | M5 (done) | `kellu-tools`, modules `spec`, `registry` |
 | Kate LSP server (hover, completion; later diagnostics, code actions) | M6, 0.2.0 | `kellu-frontends`, module `lsp` |
 
 Protocol adapters (ACP, MCP, gateway) are **frontends** or **tools**, never top-level crates.

@@ -12,7 +12,7 @@
 
 # Kellu: estado y decisiones (traspaso al proyecto Rust)
 
-Fecha: 2026-11-07 (M4 cerrado e integrado en `main`; el traspaso original es del 2026-10-29). Kellu se
+Fecha: 2026-11-08 (M5 cerrado en la rama `m5-tools`, sin commit; M4 integrado en `main`; el traspaso original es del 2026-10-29). Kellu se
 reescribe en **Rust puro**. Hay dos prototipos anteriores en GitHub, ambos como **referencia de
 comportamiento** (no se mantienen):
 
@@ -88,9 +88,9 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | Nombre | **Kellu**, "ayudante" en mapudungun (confirmado por el usuario). No usar "Keysign" (el holding) en nombres de producto ni "Kate" en el nombre. Kallu significa "azul": la grafía KALLU en un README fue un error. |
 | Licencia | MIT. Falta rellenar `<copyright holder>` en `LICENSE`. |
 | Lenguaje | **Rust**, edición 2024, MSRV 1.91, toolchain fijada en 1.91.1 (`rust-toolchain.toml`, M0). Núcleo con dependencias mínimas; `unsafe_code = "forbid"` y deny de `unwrap`, `expect` y `panic!` fuera de tests, ambos en `[workspace.lints]` y verificados por un test; secretos en tipos que se borran de memoria y no se imprimen (`secrecy`, desde M2). C++ solo para un posible plugin de Kate, que ya cubren KateAI y compañía vía ACP o gateway. |
-| Workspace | `crates/`: `kellu-common`, `kellu-security`, `kellu-sandbox`, `kellu-providers`, `kellu-projects`, `kellu-tools`, `kellu-core`, `kellu-frontends`, más el binario `kellu`. Dirección: `frontends -> core -> tools -> sandbox -> security -> common`; `providers` y `projects` también bajo `core`. Un crate se crea cuando empieza su hito; un test sobre `cargo metadata` lo exige. Ver la arista `sandbox -> security` en la sección 9.2. |
+| Workspace | `crates/`: `kellu-common`, `kellu-security`, `kellu-sandbox`, `kellu-providers`, `kellu-projects`, `kellu-tools`, `kellu-core`, `kellu-frontends`, más el binario `kellu`. Dirección: `frontends -> core -> tools -> sandbox -> security -> common`; `providers` y `projects` también bajo `core`. Un crate se crea cuando empieza su hito; un test sobre `cargo metadata` lo exige. Ver la arista `sandbox -> security` en la sección 9.4. |
 | Configuración | TOML en `~/.config/kellu/config.toml` sobre `defaults.toml` embebido (`include_str!`). Sin secretos, https obligatorio (http solo localhost), claves desconocidas son error, archivo propio y sin escritura de grupo u otros, máximo 256 KiB. |
-| Keyring | Atributo `kellu=<servicio>_<clave>` y etiqueta `KELLU: <nombre>` (mismo formato que el prototipo, que usaba el atributo `kai`). Niveles deducidos del nombre: `ai_` es `provider`; `github_`, `cloudflare_`, `render_`, `desec_`, `duckdns_` son `infra`; `neon_`, `supabase_`, `mysql_` son `db`; desconocido cae en `infra`. `keyring_name = "x"` resuelve a `ai_x_api_key`. **Decidido en M3:** alta, lectura y baja con `secret-tool` (sin dependencia nueva, compatible con las entradas existentes); **listado por D-Bus con `busctl`** (`SearchItems` con filtro vacío y la propiedad `Attributes` de cada ítem), que nunca pide un valor. `secret-tool search` no sirve para listar (ver sección 9.1). Sin `busctl`, `kellu keys list` y `cleanup-legacy` fallan con un mensaje claro y todo lo demás funciona. |
+| Keyring | Atributo `kellu=<servicio>_<clave>` y etiqueta `KELLU: <nombre>` (mismo formato que el prototipo, que usaba el atributo `kai`). Niveles deducidos del nombre: `ai_` es `provider`; `github_`, `cloudflare_`, `render_`, `desec_`, `duckdns_` son `infra`; `neon_`, `supabase_`, `mysql_` son `db`; desconocido cae en `infra`. `keyring_name = "x"` resuelve a `ai_x_api_key`. **Decidido en M3:** alta, lectura y baja con `secret-tool` (sin dependencia nueva, compatible con las entradas existentes); **listado por D-Bus con `busctl`** (`SearchItems` con filtro vacío y la propiedad `Attributes` de cada ítem), que nunca pide un valor. `secret-tool search` no sirve para listar (ver sección 9.2). Sin `busctl`, `kellu keys list` y `cleanup-legacy` fallan con un mensaje claro y todo lo demás funciona. |
 | Proveedores por defecto | openrouter, deepseek (compatibles con OpenAI); google (`gemini-flash-latest`, alias móvil); gemma_direct (`gemma-4-26b-a4b-it`, clave y cuota propias); grok (`grok-4.3`, base `https://api.x.ai/v1`); groq (`llama-3.3-70b-versatile`, base `https://api.groq.com/openai/v1`, para probar el ingreso de claves). Google usa `v1beta`. Rutas: general = gemma_direct, groq, openrouter (provisional, para pruebas); code = deepseek, openrouter; explain = google, openrouter. Presupuesto total del router: 120 s. |
 | HTTP | **`ureq` 3.5 con `rustls`** (decidido y verificado en M2): cero redirecciones (`max_redirects(0)` devuelve el 3xx sin seguirlo), timeouts por operación y global, streaming incremental, tope de cuerpo también con `chunked`, y recibe `http::Request`, así que la URL la parsea nuestro `http::Uri`. Proveedor criptográfico `ring` (no es Rust puro: C y ensamblador). Raíces de certificados: **Mozilla incluidas** (`webpki-roots`), no el almacén del sistema: una CA privada o un proxy que intercepta TLS no son de confianza (revisar con `platform-verifier` si hace falta). Los endpoints https respetan `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` del entorno (el proxy solo ve un túnel `CONNECT`); los endpoints `http` (solo localhost) **nunca** usan proxy: `ureq` no exime a localhost por sí mismo y un proxy vería la clave en claro (hallazgo de la revisión independiente; prueba `proxy::plain_http_ignores_the_proxy_environment`). |
 | Sandbox | bubblewrap con `argv` como lista, sin shell. Política de versión **B**: se permiten versiones anteriores a 0.12.0 con advertencia (CVE-2026-87766), porque el diseño nunca crea puntos de montaje dentro del árbol del proyecto; modo estricto opcional. Ubuntu 24.04 trae 0.9.0 y su paquete retiró el parche en una actualización. Landlock (crate `landlock`) como respaldo posterior. **Decidido en M4:** siempre una **copia de trabajo** de los archivos del `Grant` montada en `/work` (nunca el proyecto real, ni en solo lectura); `--unshare-user` explícito (sin él un bwrap setuid podría correr sin namespace de usuario) más `--disable-userns`; límites con `prlimit` **dentro** del sandbox, alrededor del comando (ver sección 9.1); sin límites disponibles el comando se rechaza; versión ilegible o aislamiento que falla: no abre. |
@@ -105,9 +105,9 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | M0 | Hecho | **Hecho.** Workspace, toolchain fijada, `deny.toml`, CI, `kellu --version`, `doctor`, rutas XDG, archivos privados, errores, test de arquitectura |
 | M1 | Hecho | **Hecho (paridad).** Config TOML estricta, logging privado con gancho de redacción, sesiones, `config path|check|show`, comprobación de config en `doctor` |
 | M2 | Hecho | **Hecho (paridad).** Proveedores (OpenAI-compatible con streaming y herramientas, Google), transporte HTTP endurecido, router con respaldo |
-| M3 | Hecho | **Hecho** (los bloques de seguridad están probados; los consume M5, ver sección 9.1). Bóveda de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
-| M4 | Hecho | **Hecho** (los bloques los consume M5, ver sección 9.1). Crate `kellu-sandbox`: política derivada del `Grant`, copia de trabajo, bubblewrap con `argv`, límites de recursos con `prlimit`, tiempo máximo y tope de salida; sondeo de bubblewrap, `prlimit` y `openat2` en `doctor`; `[sandbox] require_patched_bwrap`; tests de escape contra bubblewrap real |
-| M5 | No empezado | Registro de herramientas con riesgo obligatorio, propuesta y aplicación de diffs, archivos, shell en sandbox, git de lectura; escrituras de git y gh en el host con confirmación |
+| M3 | Hecho | **Hecho** (sus bloques de seguridad los consume M5, ver sección 9). Bóveda de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
+| M4 | Hecho | **Hecho** (sus bloques los consume M5, ver sección 9). Crate `kellu-sandbox`: política derivada del `Grant`, copia de trabajo, bubblewrap con `argv`, límites de recursos con `prlimit`, tiempo máximo y tope de salida; sondeo de bubblewrap, `prlimit` y `openat2` en `doctor`; `[sandbox] require_patched_bwrap`; tests de escape contra bubblewrap real |
+| M5 | No empezado | **Hecho.** Registro de herramientas con riesgo obligatorio, propuesta y aplicación de diffs, archivos, shell en sandbox, git de lectura; escrituras de git y gh en el host con confirmación (ver sección 9) |
 | M6 | No empezado | REPL, LSP (hover y completion), tema de terminal |
 | M7 | No empezado | Documentación y etiqueta 0.1.0 |
 El prototipo Ruby avanzó en paralelo en keyring (altas, bajas, lectura y listado), configuración y
@@ -191,6 +191,12 @@ perfiles de hardware y MCP.
 - **El aviso.** Que 0.12.0 corrige GHSA-pxhw-h44j-8pfx está en las notas de la versión (leídas). Que
   ese GHSA es el CVE-2026-87766 sale de resultados de búsqueda; el aviso de GitHub no se pudo leer.
 - **Memoria virtual de runtimes** (Java, Go, Node) con el límite por defecto de 4 GiB.
+- **M5 (herramientas).** `gh` real nunca se ejecutó: solo un script falso que imita su `argv` y su
+  stdin. `git_push` se probó solo contra un remoto bare local (sin SSH ni agente, sin `gh`). Git se
+  probó únicamente con la versión del contenedor. El `Approver` y las confirmaciones no se probaron
+  con personas ni con un frontend real. La prueba de "archivo de otro usuario" solo corre como root.
+  El guardián de config es una lista negra: otras claves de git que ejecuten programas no están
+  cubiertas hasta que se descubran.
 - Los comportamientos de Kate señalados en la sección 5; el CI en
   GitHub (no se ha ejecutado); las pruebas de "archivo o directorio de otro usuario" solo corren
   cuando los tests se ejecutan como root.
@@ -202,7 +208,74 @@ perfiles de hardware y MCP.
 instrucciones del proyecto y no está en el repositorio. El prototipo de Python completo
 (`kellu-M2.zip`) es para la rama `original-python`.
 
-## 9. Estado al cierre de M4 (2026-11-05)
+## 9. Estado al cierre de M5 (2026-11-08)
+
+**Verificado** (Rust 1.91.1 por apt, bubblewrap 0.9.0, git del contenedor, kernel 6.18):
+`cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` y
+`cargo test --workspace --locked` con `KELLU_REQUIRE_SANDBOX_TESTS=1` (510 tests, 0 fallos; eran 434 al
+cierre de M4: +66 en `kellu-tools`, +6 del ejecutor de host, +3 de `kellu-security`, +1 de CLI). Los
+binarios `proposal_apply` (21), `registry` (13), `git` (11) y `shell` (10) se repitieron **como
+`nobody`**. Mutaciones comprobadas: sin el guardián de git fallan los tests de filtros y de config
+peligrosa; sin `Grant::without_network` falla el test de red del shell. `cargo deny check`: advisories,
+bans, licenses y sources en verde (el aviso de la licencia `Zlib` sin usar ya existía). `cargo audit`:
+88 paquetes en `Cargo.lock`, 1422 avisos, sin hallazgos.
+
+**Hecho en M5** (sin dependencias externas nuevas; `Cargo.lock` solo añade `kellu-tools` y su arista):
+- `kellu-tools` (nuevo): `spec` (`ToolSpec` con `Risk` obligatorio, `Context`, `Tool`), `args` (argumentos
+  estrictos), `proposal` (`Item`/`Hunk`/`Proposal`), `apply` (`approve` y `apply`), `fs_tools`
+  (`list_files`, `read_file`, `search_text`, `propose_edit`, `propose_create`, `propose_delete`), `shell`
+  (`run_command`), `git` (`git_status`, `git_diff`, `git_log`; `git_commit`, `git_push`,
+  `gh_pr_create`), `host` (ejecución en el host) y `registry` (puerta por riesgo).
+- `kellu-security`: `Scope::open_dir` y `Grant::without_network`.
+- `kellu-sandbox`: `HostCommand` y `run_host`, ejecutor de host compartido (entorno explícito, stdin,
+  grupo de procesos, tiempo máximo y tope de salida).
+- CLI: `kellu tools` lista cada herramienta con su riesgo y no crea nada. `kellu doctor` comprueba `gh`
+  como opcional. Solo `lsp` sigue como "planned" (M6).
+
+**Hallazgos:**
+1. `filter.*.clean` de git **ejecuta programas** aunque se endurezca con `-c` (medido). El guardián de
+   `.git/config` rechaza `filter.*.{clean,smudge,process}`, `include`/`includeIf`, `core.sshCommand`,
+   `core.askPass` y `gpg.*.program`.
+2. Un test que "pasa" como root puede saltarse la comprobación real (permisos): el rollback se cubre con un
+   test unitario (directorio borrado tras abrir el fd) y se ejecuta también como `nobody`.
+3. El shell sin red debía derivarse del grant, no de un parámetro: `Grant::without_network`.
+
+**Decisiones tomadas en M5 (con motivo):**
+1. La puerta por riesgo corre **antes** de `tool.run`; si falla la auditoría, la herramienta no corre. La
+   salida pasa por `Redactor`, `strip_control_chars` y un tope de 60 000 caracteres.
+2. Las `propose_*` son `Read`: no tienen efectos; solo `apply` escribe.
+3. Los hunks se resuelven a offsets de bytes contra el SHA-256 del archivo visto; la aprobación es por
+   ítem o por hunk. `apply` trabaja con fd relativo a `Scope`, `NOFOLLOW`, recomprueba el hash, escribe a
+   temporal + `rename`, deja backup 0600 y revierte si algo falla. Rechaza archivos de otro usuario o con
+   enlaces duros; no crea directorios; no copia ACL ni xattr.
+4. Borrar es `Destructive`: el usuario teclea la ruta exacta.
+5. `run_command` corre en bubblewrap sobre una copia y **siempre sin red**; los cambios vuelven como
+   propuesta (`write_back`).
+6. Git y `gh` en el host con entorno vacío, `-c core.fsmonitor=false -c core.pager=cat
+   -c core.hooksPath=/dev/null`, `--no-ext-diff --no-textconv --ignore-submodules=all` y filtrado por la
+   deny list (primero nombres; el diff solo de los permitidos).
+7. Escrituras con forma fija: `git_commit` (hooks desactivados, mensaje por stdin), `git_push`
+   (`HEAD:refs/heads/<rama>` a `origin`, sin force) y `gh_pr_create` (`--title=`, `--body-file=-`). Sin
+   amend, sin borrar ramas. Entorno con lista de permitidos (HOME, XDG_CONFIG_HOME, XDG_RUNTIME_DIR,
+   SSH_AUTH_SOCK, LANG, LC_ALL, LC_CTYPE, TERM) y PATH fijo; **sin `GH_TOKEN`**.
+
+**Abiertos tras M5:**
+1. Nada llama aún al registro: lo consume M6 (REPL y LSP). `Approver` y `Confirmation` no se han probado
+   con humanos.
+2. Los límites no son configurables por clase de herramienta (M4 lo anticipaba); siguen los valores
+   provisionales de la sección 9.1.
+3. `kellu-projects` no se creó: `ARCHITECTURE.md` lo ligaba a M5, la tabla de hitos no. Decidir en M6.
+4. El guardián de config es una **lista negra**: lo que no esté en ella pasa.
+5. `git_commit` desactiva los hooks (`core.hooksPath=/dev/null`): **a confirmar contigo**; el costo es que
+   los hooks de pre-commit del proyecto no corren.
+6. TOCTOU residual en `apply` (sin lock entre procesos). Cada `propose_*` trata un archivo por llamada.
+7. Sin herramienta de red dentro del sandbox. `.venv` y seccomp siguen como en la sección 9.1.
+
+**Siguiente: M6** (REPL, LSP con hover y completion, tema de terminal). Antes, en tu equipo y como usuario
+normal: `kellu doctor`, `kellu tools` y `KELLU_REQUIRE_SANDBOX_TESTS=1 cargo test -p kellu-tools --test shell`
+y `--test git`.
+
+## 9.1 Estado al cierre de M4 (2026-11-05)
 
 **Verificado** (Rust 1.91.1 por apt, bubblewrap 0.9.0 del paquete de Ubuntu 24.04, kernel 6.18):
 `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` y
@@ -271,7 +344,7 @@ diffs (reutiliza `Staging::changes()` y sus hashes); archivos; shell en sandbox;
 ejecutar `kellu doctor` y `KELLU_REQUIRE_SANDBOX_TESTS=1 cargo test -p kellu-sandbox --test escape` en
 tu equipo, como usuario normal.
 
-## 9.1 Estado al cierre de M3 (2026-11-02)
+## 9.2 Estado al cierre de M3 (2026-11-02)
 
 **Verificado** (Rust 1.91.1 por apt): `cargo fmt --check`, `cargo clippy --workspace --all-targets
 --locked -- -D warnings`, `cargo test --workspace --locked` (368 tests, 0 fallos, repetida 5 veces sin intermitencias), `cargo deny
@@ -351,7 +424,7 @@ copia de trabajo, límites de recursos, sondeo de bubblewrap y de `openat2` en `
 escape. Antes, probar `kellu keys list` y `kellu providers test` en tu equipo (sobre todo si usas
 KWallet).
 
-## 9.2 Estado al cierre de M2 (2026-11-01)
+## 9.3 Estado al cierre de M2 (2026-11-01)
 
 **Verificado** (Rust 1.91.1 instalado por apt; rustup no alcanza `static.rust-lang.org` desde el
 entorno de verificación): `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
@@ -414,7 +487,7 @@ deny globs, redactor v1 (cablearlo al gancho de `log` y `session`), permisos por
 eco; (4) `kellu providers test`, conectando la bóveda con `KeyLookup`. Antes de M3, decidir si se
 mantiene `ring` y las raíces incluidas (sección 2, fila HTTP).
 
-## 9.3 Estado al cierre de M1 (2026-10-31)
+## 9.4 Estado al cierre de M1 (2026-10-31)
 
 **Verificado:** `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`
 y `cargo test --workspace --locked` (147 tests) en verde con Rust 1.91.1; `cargo deny check` en
