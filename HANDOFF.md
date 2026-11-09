@@ -12,7 +12,7 @@
 
 # Kellu: estado y decisiones (traspaso al proyecto Rust)
 
-Fecha: 2026-11-08 (M5 cerrado en la rama `m5-tools`, sin commit; M4 integrado en `main`; el traspaso original es del 2026-10-29). Kellu se
+Fecha: 2026-11-09 (M6 cerrado en la rama `m6-frontends`, desde `m5-tools`; M5 en `m5-tools`, probado por el usuario; M4 integrado en `main`; el traspaso original es del 2026-10-29). Kellu se
 reescribe en **Rust puro**. Hay dos prototipos anteriores en GitHub, ambos como **referencia de
 comportamiento** (no se mantienen):
 
@@ -88,12 +88,12 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | Nombre | **Kellu**, "ayudante" en mapudungun (confirmado por el usuario). No usar "Keysign" (el holding) en nombres de producto ni "Kate" en el nombre. Kallu significa "azul": la grafía KALLU en un README fue un error. |
 | Licencia | MIT. Falta rellenar `<copyright holder>` en `LICENSE`. |
 | Lenguaje | **Rust**, edición 2024, MSRV 1.91, toolchain fijada en 1.91.1 (`rust-toolchain.toml`, M0). Núcleo con dependencias mínimas; `unsafe_code = "forbid"` y deny de `unwrap`, `expect` y `panic!` fuera de tests, ambos en `[workspace.lints]` y verificados por un test; secretos en tipos que se borran de memoria y no se imprimen (`secrecy`, desde M2). C++ solo para un posible plugin de Kate, que ya cubren KateAI y compañía vía ACP o gateway. |
-| Workspace | `crates/`: `kellu-common`, `kellu-security`, `kellu-sandbox`, `kellu-providers`, `kellu-projects`, `kellu-tools`, `kellu-core`, `kellu-frontends`, más el binario `kellu`. Dirección: `frontends -> core -> tools -> sandbox -> security -> common`; `providers` y `projects` también bajo `core`. Un crate se crea cuando empieza su hito; un test sobre `cargo metadata` lo exige. Ver la arista `sandbox -> security` en la sección 9.4. |
+| Workspace | `crates/`: `kellu-common`, `kellu-security`, `kellu-sandbox`, `kellu-providers`, `kellu-projects`, `kellu-tools`, `kellu-core`, `kellu-frontends`, más el binario `kellu`. Dirección: `frontends -> core -> tools -> sandbox -> security -> common`; `providers` y `projects` también bajo `core`. Un crate se crea cuando empieza su hito; un test sobre `cargo metadata` lo exige. Ver la arista `sandbox -> security` en la sección 9.5. |
 | Configuración | TOML en `~/.config/kellu/config.toml` sobre `defaults.toml` embebido (`include_str!`). Sin secretos, https obligatorio (http solo localhost), claves desconocidas son error, archivo propio y sin escritura de grupo u otros, máximo 256 KiB. |
-| Keyring | Atributo `kellu=<servicio>_<clave>` y etiqueta `KELLU: <nombre>` (mismo formato que el prototipo, que usaba el atributo `kai`). Niveles deducidos del nombre: `ai_` es `provider`; `github_`, `cloudflare_`, `render_`, `desec_`, `duckdns_` son `infra`; `neon_`, `supabase_`, `mysql_` son `db`; desconocido cae en `infra`. `keyring_name = "x"` resuelve a `ai_x_api_key`. **Decidido en M3:** alta, lectura y baja con `secret-tool` (sin dependencia nueva, compatible con las entradas existentes); **listado por D-Bus con `busctl`** (`SearchItems` con filtro vacío y la propiedad `Attributes` de cada ítem), que nunca pide un valor. `secret-tool search` no sirve para listar (ver sección 9.2). Sin `busctl`, `kellu keys list` y `cleanup-legacy` fallan con un mensaje claro y todo lo demás funciona. |
+| Keyring | Atributo `kellu=<servicio>_<clave>` y etiqueta `KELLU: <nombre>` (mismo formato que el prototipo, que usaba el atributo `kai`). Niveles deducidos del nombre: `ai_` es `provider`; `github_`, `cloudflare_`, `render_`, `desec_`, `duckdns_` son `infra`; `neon_`, `supabase_`, `mysql_` son `db`; desconocido cae en `infra`. `keyring_name = "x"` resuelve a `ai_x_api_key`. **Decidido en M3:** alta, lectura y baja con `secret-tool` (sin dependencia nueva, compatible con las entradas existentes); **listado por D-Bus con `busctl`** (`SearchItems` con filtro vacío y la propiedad `Attributes` de cada ítem), que nunca pide un valor. `secret-tool search` no sirve para listar (ver sección 9.3). Sin `busctl`, `kellu keys list` y `cleanup-legacy` fallan con un mensaje claro y todo lo demás funciona. |
 | Proveedores por defecto | openrouter, deepseek (compatibles con OpenAI); google (`gemini-flash-latest`, alias móvil); gemma_direct (`gemma-4-26b-a4b-it`, clave y cuota propias); grok (`grok-4.3`, base `https://api.x.ai/v1`); groq (`llama-3.3-70b-versatile`, base `https://api.groq.com/openai/v1`, para probar el ingreso de claves). Google usa `v1beta`. Rutas: general = gemma_direct, groq, openrouter (provisional, para pruebas); code = deepseek, openrouter; explain = google, openrouter. Presupuesto total del router: 120 s. |
 | HTTP | **`ureq` 3.5 con `rustls`** (decidido y verificado en M2): cero redirecciones (`max_redirects(0)` devuelve el 3xx sin seguirlo), timeouts por operación y global, streaming incremental, tope de cuerpo también con `chunked`, y recibe `http::Request`, así que la URL la parsea nuestro `http::Uri`. Proveedor criptográfico `ring` (no es Rust puro: C y ensamblador). Raíces de certificados: **Mozilla incluidas** (`webpki-roots`), no el almacén del sistema: una CA privada o un proxy que intercepta TLS no son de confianza (revisar con `platform-verifier` si hace falta). Los endpoints https respetan `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` del entorno (el proxy solo ve un túnel `CONNECT`); los endpoints `http` (solo localhost) **nunca** usan proxy: `ureq` no exime a localhost por sí mismo y un proxy vería la clave en claro (hallazgo de la revisión independiente; prueba `proxy::plain_http_ignores_the_proxy_environment`). |
-| Sandbox | bubblewrap con `argv` como lista, sin shell. Política de versión **B**: se permiten versiones anteriores a 0.12.0 con advertencia (CVE-2026-87766), porque el diseño nunca crea puntos de montaje dentro del árbol del proyecto; modo estricto opcional. Ubuntu 24.04 trae 0.9.0 y su paquete retiró el parche en una actualización. Landlock (crate `landlock`) como respaldo posterior. **Decidido en M4:** siempre una **copia de trabajo** de los archivos del `Grant` montada en `/work` (nunca el proyecto real, ni en solo lectura); `--unshare-user` explícito (sin él un bwrap setuid podría correr sin namespace de usuario) más `--disable-userns`; límites con `prlimit` **dentro** del sandbox, alrededor del comando (ver sección 9.1); sin límites disponibles el comando se rechaza; versión ilegible o aislamiento que falla: no abre. |
+| Sandbox | bubblewrap con `argv` como lista, sin shell. Política de versión **B**: se permiten versiones anteriores a 0.12.0 con advertencia (CVE-2026-87766), porque el diseño nunca crea puntos de montaje dentro del árbol del proyecto; modo estricto opcional. Ubuntu 24.04 trae 0.9.0 y su paquete retiró el parche en una actualización. Landlock (crate `landlock`) como respaldo posterior. **Decidido en M4:** siempre una **copia de trabajo** de los archivos del `Grant` montada en `/work` (nunca el proyecto real, ni en solo lectura); `--unshare-user` explícito (sin él un bwrap setuid podría correr sin namespace de usuario) más `--disable-userns`; límites con `prlimit` **dentro** del sandbox, alrededor del comando (ver sección 9.2); sin límites disponibles el comando se rechaza; versión ilegible o aislamiento que falla: no abre. |
 | Autorización | Lectura por proyecto (solo lectura). Escritura nunca permanente: el modelo propone diffs con hashes, el usuario elige denegar, parcial o completo, y **solo el núcleo aplica**. Ningún sandbox escribe en el proyecto real; las herramientas que escriben trabajan sobre una copia (staging) y su resultado vuelve como otra propuesta. Un solo `Grant` deriva la política de rutas y los montajes (prueba con `proptest`). Auditoría JSONL append-only (0600) con cadena de hashes. Acceso a archivos por descriptores (`cap-std` o `rustix openat2`). |
 | LSP en Kate | 0.1.0: hover y completion manual. 0.2.0: diagnósticos y code actions (una acción por hunk más "aplicar todo"). Chat, vista previa de diffs y texto fantasma necesitan otros frontends. Raíz igual a `$HOME`, sus ancestros o `/` se rechaza. La configuración de `.kateproject` es no confiable y solo puede endurecer. Candidato: `lsp-server` y `lsp-types`. |
 | Marca | Azul marino `#14253D`, dorado `#C8A66A`, cobre `#B87355`, marfil `#F4F0E7`. Símbolo: geometría abstracta basada en figuras de textiles mapuches. Pendiente: versión simplificada para 16 y 24 px, rediseño vectorial propio, tipografía libre modificada por el usuario con registro de licencia (`docs/brand/PROVENANCE.md`). Dorado sobre marfil no alcanza contraste (2.0:1): usar un dorado más oscuro en fondos claros. Terminal: niveles ASCII `<*>`, Unicode `‹ ◆ ›`, color; respetar `NO_COLOR`, `TERM=dumb` y locale no UTF-8 (`kellu-frontends`, módulo `theme`, M6). |
@@ -105,10 +105,10 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | M0 | Hecho | **Hecho.** Workspace, toolchain fijada, `deny.toml`, CI, `kellu --version`, `doctor`, rutas XDG, archivos privados, errores, test de arquitectura |
 | M1 | Hecho | **Hecho (paridad).** Config TOML estricta, logging privado con gancho de redacción, sesiones, `config path|check|show`, comprobación de config en `doctor` |
 | M2 | Hecho | **Hecho (paridad).** Proveedores (OpenAI-compatible con streaming y herramientas, Google), transporte HTTP endurecido, router con respaldo |
-| M3 | Hecho | **Hecho** (sus bloques de seguridad los consume M5, ver sección 9). Bóveda de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
-| M4 | Hecho | **Hecho** (sus bloques los consume M5, ver sección 9). Crate `kellu-sandbox`: política derivada del `Grant`, copia de trabajo, bubblewrap con `argv`, límites de recursos con `prlimit`, tiempo máximo y tope de salida; sondeo de bubblewrap, `prlimit` y `openat2` en `doctor`; `[sandbox] require_patched_bwrap`; tests de escape contra bubblewrap real |
+| M3 | Hecho | **Hecho** (sus bloques de seguridad los consume M5, ver sección 9.1). Bóveda de keyring con niveles, `kellu keys list|set|rm|cleanup-legacy`, entorno depurado, deny globs, redactor v1, permisos por riesgo, scope y `Grant`, auditoría, `kellu providers test` |
+| M4 | Hecho | **Hecho** (sus bloques los consume M5, ver sección 9.1). Crate `kellu-sandbox`: política derivada del `Grant`, copia de trabajo, bubblewrap con `argv`, límites de recursos con `prlimit`, tiempo máximo y tope de salida; sondeo de bubblewrap, `prlimit` y `openat2` en `doctor`; `[sandbox] require_patched_bwrap`; tests de escape contra bubblewrap real |
 | M5 | No empezado | **Hecho.** Registro de herramientas con riesgo obligatorio, propuesta y aplicación de diffs, archivos, shell en sandbox, git de lectura; escrituras de git y gh en el host con confirmación (ver sección 9) |
-| M6 | No empezado | REPL, LSP (hover y completion), tema de terminal |
+| M6 | No empezado | **Hecho.** REPL (`kellu chat`), LSP (hover y completion, opt-in) y tema de terminal; ver sección 9 |
 | M7 | No empezado | Documentación y etiqueta 0.1.0 |
 El prototipo Ruby avanzó en paralelo en keyring (altas, bajas, lectura y listado), configuración y
 adaptadores, así que es una segunda referencia para M2 y M3.
@@ -134,10 +134,11 @@ perfiles de hardware y MCP.
 - Borrar `test_key` y la entrada antigua de gemma_direct.
 - Confirmar en su cuenta el identificador de modelo de Grok y que los alias de Gemini respondan.
 - Ejecutar `kellu doctor` y, como usuario normal, `KELLU_REQUIRE_SANDBOX_TESTS=1 cargo test -p kellu-sandbox --test escape`; contar lo que diga el sondeo.
+- Probar M6 en su equipo (ver el cierre en la sección 9): `kellu chat` en una terminal y `kellu lsp` en Kate con `[lsp]` activado.
 - Probar en su Kate: si las code actions aparecen sin diagnóstico, `showMessage` y `$/progress`, y si `.kateproject` puede sobrescribir el comando del servidor.
 - Marca: versión de 16 px, vectorización, fuente libre y su registro de licencia.
 - Mapas de bits en `assets/branding/png/` (varios tamaños, para quien no tenga soporte SVG): se hacen a mano para ajustar el espaciado del isotipo y del wordmark cuando se reducen mucho. Sin prioridad.
-- `packaging/kellu.desktop`: ya está en el repo (`Exec=konsole -e kellu`, `Icon=utilities-terminal`). Hasta M6 `kellu` sin argumentos solo imprime la ayuda, así que la ventana de Konsole se cierra al instante; cambiar el icono por el de la marca cuando existan los PNG.
+- `packaging/kellu.desktop`: ya está en el repo (`Exec=konsole -e kellu`, `Icon=utilities-terminal`). Desde M6 `kellu` sin argumentos abre el chat cuando hay terminal (Konsole lo es), así que la ventana ya no se cierra; cambiar el icono por el de la marca cuando existan los PNG.
 
 ## 6. Cómo trabajar
 - Entorno de verificación (se repite en cada sesión; no persiste):
@@ -191,6 +192,8 @@ perfiles de hardware y MCP.
 - **El aviso.** Que 0.12.0 corrige GHSA-pxhw-h44j-8pfx está en las notas de la versión (leídas). Que
   ese GHSA es el CVE-2026-87766 sale de resultados de búsqueda; el aviso de GitHub no se pudo leer.
 - **Memoria virtual de runtimes** (Java, Go, Node) con el límite por defecto de 4 GiB.
+- **M6 (frontends).** Ver la sección 9: nada se probó con un Kate real ni con un proveedor real, y el
+  REPL no se probó en una terminal interactiva.
 - **M5 (herramientas).** `gh` real nunca se ejecutó: solo un script falso que imita su `argv` y su
   stdin. `git_push` se probó solo contra un remoto bare local (sin SSH ni agente, sin `gh`). Git se
   probó únicamente con la versión del contenedor. El `Approver` y las confirmaciones no se probaron
@@ -208,7 +211,74 @@ perfiles de hardware y MCP.
 instrucciones del proyecto y no está en el repositorio. El prototipo de Python completo
 (`kellu-M2.zip`) es para la rama `original-python`.
 
-## 9. Estado al cierre de M5 (2026-11-08)
+## 9. Estado al cierre de M6 (2026-11-09)
+
+**Verificado** (Rust 1.91.1 por apt, bubblewrap 0.9.0, git del contenedor, kernel 6.18):
+`cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` y
+`cargo test --workspace --locked` con `KELLU_REQUIRE_SANDBOX_TESTS=1`: 576 tests, 0 fallos (eran 510
+al cierre de M5: +11 en `kellu-core` entre `assist` y `[lsp]`, +49 en `kellu-frontends`, +6 en el
+binario). `lsp` (21), `repl` (8) y el binario (28) también pasan como `nobody`. `cargo deny check` y
+`cargo audit` (89 paquetes, 1422 avisos) en verde. Mutaciones comprobadas en el servidor LSP: sin la
+comprobación de deny, sin la de symlink, sin resolver el directorio, con `initializationOptions` que
+pueden activar, sin repetir la comprobación en cada petición y con caracteres de activación hacen
+fallar tests (dos mutaciones sobrevivieron al principio y se añadieron los tests que faltaban).
+Prueba de humo real: `kellu lsp` contra un servidor HTTP local que imita la API OpenAI, con `[lsp]`
+activado: hover y completion responden, un `.env` abierto no llama al proveedor y ni el token de
+ejemplo ni el contenido de `.env` aparecen en lo enviado.
+
+**Hecho en M6** (sin dependencias externas nuevas; `Cargo.lock` solo añade `kellu-frontends`):
+- `kellu-frontends` (nuevo): `theme` (ASCII `<*>`, Unicode `‹ ◆ ›`, color; baja por `NO_COLOR`,
+  `TERM=dumb` o sin definir, locale no UTF-8 o salida que no es terminal), `repl` y `lsp`
+  (`transport`, `uri`, `text`, `server`).
+- `kellu-core::assist`: único punto por el que el texto del editor se vuelve petición al modelo:
+  ventana acotada, redacción, valla `<kellu-code>` con los marcadores del texto rotos, id de lenguaje
+  reducido a ASCII, respuesta sin caracteres de control ni vallas de Markdown, historial del REPL
+  acotado y redactado al salir.
+- Configuración `[lsp]` (`hover`, `completion`, ambos `false`).
+- CLI: `kellu chat` (y `kellu` sin argumentos en una terminal; si no es terminal, imprime la ayuda) y
+  `kellu lsp`. Ya no queda ningún comando "planned": se eliminó `EXIT_NOT_IMPLEMENTED`.
+  Ambos arrancan sin keyring (los proveedores que necesitan clave fallan con error claro).
+
+**Decisiones tomadas en M6 (con motivo):**
+1. **Hover y completion vienen desactivados.** Kate los pide sola (pausa del ratón, identificador
+   tecleado) y el protocolo no distingue la petición manual; cada una envía código a un proveedor. Un
+   proyecto (`.kateproject`, no confiable) solo puede apagarlas. **A confirmar contigo.**
+2. LSP escrito a mano sobre `serde_json` (sin `lsp-server` ni `lsp-types`, como proponía PORTING):
+   ocho mensajes no justifican el árbol de dependencias, y así el encuadre es estricto y se prueba.
+3. Documentos: solo URIs `file:`; deben caer dentro del `Scope` (rechaza `/`, `$HOME`, sus ancestros
+   y raíces sin marcador de proyecto), pasar los deny globs y no ser ni estar tras un symlink; se
+   resuelve primero el directorio y se repite la comprobación en cada petición. Un búfer sin guardar
+   se admite si su directorio es válido. Una raíz rechazada no rompe el handshake: apaga las funciones.
+4. Sincronización de texto completa; sin caracteres de activación; hover en texto plano; completion
+   como una sola edición de texto plano (`insertTextFormat` 1: un `$1` del modelo nunca se expande).
+5. Errores del modelo ⇒ resultado vacío y una línea en el log privado, nunca un mensaje a Kate.
+6. El REPL no usa herramientas: el bucle de agente es 0.2.0. Comandos: `/help`, `/clear`, `/exit`.
+7. `kellu chat`/`lsp` no exigen keyring: avisan por stderr y siguen.
+
+**Abiertos tras M6:**
+1. El servidor es de un solo hilo: una llamada al modelo bloquea a Kate hasta que responde o vence el
+   presupuesto del router. `$/cancelRequest` se ignora. Sin tope de llamadas por minuto (solo la
+   caché por versión de documento).
+2. Patrones deny del usuario siguen sin leerse de `config.toml` (pendiente desde M3); solo la lista
+   incorporada.
+3. `kellu-projects` sigue sin crearse (decidir con 0.2.0).
+4. Sin aviso visible en Kate cuando falla el modelo (`window/showMessage` es 0.2.0, comportamiento
+   por verificar).
+5. El REPL no muestra aún propuestas ni pide confirmaciones (llegan con el bucle de agente).
+6. Un `Approver` y las confirmaciones de M5 siguen sin probarse con personas.
+
+**No verificado:** con un Kate real nada (arranque del servidor, el JSON de `servers`, si el
+completado se filtra y muestra con `filterText`, con qué frecuencia pide Kate hover y completion, y
+si `.kateproject` puede sobrescribir el comando). Con un proveedor real tampoco: solo un servidor
+HTTP local falso. El REPL no se probó en una terminal interactiva real (tema de color, Ctrl-C,
+Ctrl-D, pegado largo); sí con flujos en memoria y como proceso con tuberías. La prueba de "otro
+usuario" de M5 sigue corriendo solo como root.
+
+**Siguiente: M7** (documentación y etiqueta 0.1.0). Antes, en tu equipo: `cargo test --workspace`,
+`kellu chat` en una terminal y, en Kate, el JSON de `servers` del README con `[lsp]` activado
+(primero `completion`, luego `hover`), anotando qué se ve y con qué frecuencia llama.
+
+## 9.1 Estado al cierre de M5 (2026-11-08)
 
 **Verificado** (Rust 1.91.1 por apt, bubblewrap 0.9.0, git del contenedor, kernel 6.18):
 `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` y
@@ -263,19 +333,19 @@ bans, licenses y sources en verde (el aviso de la licencia `Zlib` sin usar ya ex
 1. Nada llama aún al registro: lo consume M6 (REPL y LSP). `Approver` y `Confirmation` no se han probado
    con humanos.
 2. Los límites no son configurables por clase de herramienta (M4 lo anticipaba); siguen los valores
-   provisionales de la sección 9.1.
+   provisionales de la sección 9.2.
 3. `kellu-projects` no se creó: `ARCHITECTURE.md` lo ligaba a M5, la tabla de hitos no. Decidir en M6.
 4. El guardián de config es una **lista negra**: lo que no esté en ella pasa.
 5. `git_commit` desactiva los hooks (`core.hooksPath=/dev/null`): **a confirmar contigo**; el costo es que
    los hooks de pre-commit del proyecto no corren.
 6. TOCTOU residual en `apply` (sin lock entre procesos). Cada `propose_*` trata un archivo por llamada.
-7. Sin herramienta de red dentro del sandbox. `.venv` y seccomp siguen como en la sección 9.1.
+7. Sin herramienta de red dentro del sandbox. `.venv` y seccomp siguen como en la sección 9.2.
 
 **Siguiente: M6** (REPL, LSP con hover y completion, tema de terminal). Antes, en tu equipo y como usuario
 normal: `kellu doctor`, `kellu tools` y `KELLU_REQUIRE_SANDBOX_TESTS=1 cargo test -p kellu-tools --test shell`
 y `--test git`.
 
-## 9.1 Estado al cierre de M4 (2026-11-05)
+## 9.2 Estado al cierre de M4 (2026-11-05)
 
 **Verificado** (Rust 1.91.1 por apt, bubblewrap 0.9.0 del paquete de Ubuntu 24.04, kernel 6.18):
 `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` y
@@ -344,7 +414,7 @@ diffs (reutiliza `Staging::changes()` y sus hashes); archivos; shell en sandbox;
 ejecutar `kellu doctor` y `KELLU_REQUIRE_SANDBOX_TESTS=1 cargo test -p kellu-sandbox --test escape` en
 tu equipo, como usuario normal.
 
-## 9.2 Estado al cierre de M3 (2026-11-02)
+## 9.3 Estado al cierre de M3 (2026-11-02)
 
 **Verificado** (Rust 1.91.1 por apt): `cargo fmt --check`, `cargo clippy --workspace --all-targets
 --locked -- -D warnings`, `cargo test --workspace --locked` (368 tests, 0 fallos, repetida 5 veces sin intermitencias), `cargo deny
@@ -424,7 +494,7 @@ copia de trabajo, límites de recursos, sondeo de bubblewrap y de `openat2` en `
 escape. Antes, probar `kellu keys list` y `kellu providers test` en tu equipo (sobre todo si usas
 KWallet).
 
-## 9.3 Estado al cierre de M2 (2026-11-01)
+## 9.4 Estado al cierre de M2 (2026-11-01)
 
 **Verificado** (Rust 1.91.1 instalado por apt; rustup no alcanza `static.rust-lang.org` desde el
 entorno de verificación): `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
@@ -487,7 +557,7 @@ deny globs, redactor v1 (cablearlo al gancho de `log` y `session`), permisos por
 eco; (4) `kellu providers test`, conectando la bóveda con `KeyLookup`. Antes de M3, decidir si se
 mantiene `ring` y las raíces incluidas (sección 2, fila HTTP).
 
-## 9.4 Estado al cierre de M1 (2026-10-31)
+## 9.5 Estado al cierre de M1 (2026-10-31)
 
 **Verificado:** `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`
 y `cargo test --workspace --locked` (147 tests) en verde con Rust 1.91.1; `cargo deny check` en

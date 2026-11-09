@@ -18,7 +18,7 @@ Kellu is an AI assistant that can read your code, call external model providers 
 >
 > **Implemented and tested so far (M0 to M5):** no side effects at startup or construction; state directories `0700` and files `0600`, opened without following symlinks and verified on the open descriptor (T8); strict, secret-free configuration (T11); log and session files that strip control and format characters, cannot forge structure and cannot be redirected through a symlink (T9, partly); the provider transport (redirects refused, keys only in headers and scrubbed from errors, size and duration limits, https enforced) and validation of provider responses and tool calls (T7, T11, partly); the keyring vault with tiers, secrets read only through stdin and never through arguments, scrubbed child environments (T3, T8); redaction v1 applied by default to session logs (T9, best effort); deny globs, project scope opened beneath a directory descriptor without following symlinks, grants, risk-based permissions and a hash-chained audit log, **as tested building blocks** (T2, T5, partly); the sandbox (M4) and the tool layer (M5): every tool declares a risk that is enforced before it runs, files change only through an approved proposal applied by the core, commands run in the sandbox without network, and git and `gh` run on the host with a hardened environment (T1, T3, T4, T5, partly).
 >
-> **Not wired up yet:** the tools are built and tested (M5) but nothing connects them to a model: the terminal REPL and the LSP server (M6) are their first callers, own the confirmation prompts and will start the application log. No command sends file context to a provider today (`kellu providers test` sends a fixed prompt), but when the front ends arrive the outbound path must apply deny globs and redaction first: redaction is **best effort** and uses a fixed `[REDACTED]` marker (reversible placeholders are planned). Do not point Kellu at files that contain secrets.
+> **What reaches a model today (M6):** the terminal chat (`kellu chat`) and, if you enable them under `[lsp]`, hover and completion in Kate. Every text that leaves goes through one function set (`kellu-core::assist`): deny globs decide *before* (the LSP refuses denied, outside-project and symlinked documents), then secrets are redacted (**best effort**, fixed `[REDACTED]` marker), the window around the cursor is bounded and the code is fenced as untrusted data. The model does not call the tools yet: the agent loop and the confirmation prompts for them arrive in 0.2.0. Do not point Kellu at files that contain secrets.
 
 ## Reporting a vulnerability
 
@@ -163,12 +163,24 @@ Git needs the project's `.git` and the user's credentials, neither of which the 
 
 Limits you should know: the list of dangerous configuration keys is a deny list, so a repository you do not trust should not be opened (a key that is not listed is not watched); commits do not run your `pre-commit` hooks; `git_diff` ignores submodules.
 
+## Editor text and the LSP server (M6)
+
+Everything Kate sends is untrusted: documents, positions, `initializationOptions` (which come from the repository's `.kateproject`) and the framing itself.
+
+- **Opt-in.** `[lsp] hover` and `[lsp] completion` default to off. A project can switch them off, never on; a disabled feature is not advertised.
+- **Which documents.** Only `file:` URIs (no remote host, query, fragment, NUL or `..` after decoding). The document must lie inside the project scope, which refuses `/`, the home directory, its ancestors and a root without a project marker, pass the deny globs (also for buffers not yet saved) and not be, or sit behind, a symlink. The directory is resolved first, so a symlinked directory cannot lead outside. The check repeats on every request, so a file replaced by a link after opening is refused. Denied or oversized documents are never kept.
+- **What leaves.** A bounded window around the cursor, redacted, wrapped in `<kellu-code>` with any such tag inside the text broken, and a system prompt that calls it untrusted data. Language ids are reduced to a short ASCII word.
+- **What comes back.** Control characters are stripped; hover is plain text (no Markdown links or images); completion is a single plain-text edit with `insertTextFormat` 1, so `$1` or `${...}` from a model is inserted literally. Prompt injection is not solved by this: it is contained by the model having no tools in this path.
+- **Protocol.** Framing is strict: a single numeric `Content-Length` (digits only, 8 MiB at most), header lines and counts capped; broken framing ends the process, a body that is not JSON gets a parse error. Standard output carries only protocol frames; notes go to standard error and warnings to the private log.
+- **Terminal.** The chat strips control characters from the model's answer and from what you type, caps a line at 16 KiB, and its session log redacts like every other.
+- **Known limits.** The server is single-threaded: a slow provider blocks Kate until the router budget ends. There is no per-minute cap on calls beyond the per-version cache. A user-defined deny pattern is not yet read from the configuration (only the built-in list).
+
 ## Data egress and sanitization
 
 - **Outbound:** deny globs, then secret redaction (known token formats, high-entropy strings, private key blocks), with reversible placeholders so answers can be re-hydrated locally (redaction v1 uses a fixed `[REDACTED]` marker; reversible placeholders are planned).
 - **Inbound:** all external content is untrusted. Filtering cannot stop prompt injection by itself, which is why privilege separation, confirmation and the sandbox exist.
 - Redaction is **best effort**. Patterns and entropy checks miss things. Do not rely on them as the only protection for highly sensitive material; use local-only mode or do not send it.
-- The terminal REPL and the LSP server send code context to the provider you configure. Until the egress controls ship, do not enable Kellu on files that contain secrets.
+- The terminal chat and the LSP server send what you type and the code around the cursor to the provider you configure, after deny globs and redaction. Redaction is best effort: do not enable them on files that contain secrets.
 
 ## Supply chain and development practices
 
@@ -190,7 +202,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 | M3 | Done | Keyring vault with tiers (a provider key name can only resolve into `ai_*`; `infra` and `db` have no read path), scrubbed environment, deny globs, redaction v1, risk-based permissions, project scope opened beneath a directory descriptor, `Grant`, hash-chained audit log, `kellu keys` and `kellu providers test`. Tested building blocks: nothing consumes grants, permissions, scope, deny globs or the audit log until M4 and M5 |
 | M4 | Done | Sandbox backend (bubblewrap, `argv` without a shell), policy derived from the `Grant`, staging copy, resource limits inside the sandbox, `kellu doctor` (isolation, bubblewrap version, `prlimit`, `openat2`), escape tests. Tested building block: no tool runs in the sandbox until M5 |
 | M5 | Done | Tool registry requiring a declared risk level and enforcing its requirement before a tool runs; proposal contract and host-side apply of approved hunks (hash recheck, private backup, atomic write, undo, typed deletion); sandboxed commands without network; hardened host-side git reads; git and `gh` writes with confirmation and no force. Tested building blocks: nothing calls the registry until M6 |
-| M6 | Planned | LSP and REPL honoring deny globs and redaction |
+| M6 | Done | Single egress point (`kellu-core::assist`): redaction, bounded window, untrusted-data fence, sanitized answers; LSP: opt-in features, `file:` URIs only, project scope plus deny globs plus no symlinks checked on every request, plain-text hover and completion (never snippet syntax), project settings can only tighten, strict size-capped framing, protocol-only stdout; terminal output stripped of control characters |
 | 0.2.0 | Planned | Agent loop gated by the policy engine; injection-oriented tests |
 | 0.4.0 | Planned | Memory store with acceptance criteria, expiry and "from memory" labeling |
 | 0.5.0 | Planned | MCP client with per-server allowlist, sandboxing and risk mapping; extension tool descriptions treated as untrusted |

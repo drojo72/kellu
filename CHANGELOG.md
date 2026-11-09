@@ -49,6 +49,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   - `kellu-core`: sessions redact secrets by default (they used the identity function before).
   - Dependencies: `sha2` (and six RustCrypto crates below it), `zeroize` (already in the tree),
     `rustix` features `stdio` and `termios`.
+- **M6** (new work):
+  - `kellu-frontends` (new crate): the terminal REPL, the Kate LSP server and the terminal theme.
+    `kellu chat` (also plain `kellu` when run in a terminal) streams answers; `kellu lsp` serves
+    hover and completion on standard input and output. Hand-written JSON-RPC framing over
+    `serde_json`: no `lsp-server` or `lsp-types` (no new external dependency).
+  - `kellu-core::assist`: the single place where editor text becomes a model request: a bounded
+    window around the cursor, secrets redacted, the text fenced as untrusted data (a hostile
+    `</kellu-code>` is broken), control characters and fences removed from the answer, and the
+    conversation of the REPL bounded and redacted on its way out.
+  - `[lsp]` configuration: `hover` and `completion`, both **off by default** (an editor asks for
+    them by itself, and each one sends code to a provider). A project (`.kateproject`) can switch a
+    feature off through `initializationOptions`, never on.
+  - LSP rules: only `file:` URIs; the document must be inside the project scope (refused: `/`, the
+    home directory and its ancestors, a root without a project marker), pass the deny globs, and
+    not be, or sit behind, a symlink; the check is repeated for every request. Hover answers are
+    plain text; completion is one plain-text edit (never snippet syntax) and has no trigger
+    characters. Full-text sync; documents over 2 MiB or past 64 are not kept; answers are cached
+    per document version.
+  - Terminal theme: `<*>` (ASCII), `‹ ◆ ›` (Unicode) or color; `NO_COLOR`, `TERM=dumb`, an unset
+    `TERM`, a non-UTF-8 locale and output that is not a terminal lower the level.
+  - `kellu chat` and `kellu lsp` start without a keyring (providers that need a key fail with a
+    clear error). `kellu lsp` writes warnings to the private log, never to the protocol stream.
 - **M5** (new work):
   - `kellu-tools` (new crate): a registry in which every tool declares its risk (a required
     argument of `ToolSpec::new`, pinned per tool by a test) and where the requirement for that risk

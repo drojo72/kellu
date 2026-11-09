@@ -46,7 +46,6 @@ fn no_command_prints_help() {
     let out = kellu(&[], home.path(), home.path());
     assert_eq!(out.status.code(), Some(0));
     assert!(text(&out.stdout).contains("doctor"));
-    assert!(text(&out.stderr).contains("M6"));
 }
 
 #[test]
@@ -57,14 +56,72 @@ fn unknown_command_is_a_usage_error() {
 }
 
 #[test]
-fn planned_commands_report_not_implemented() {
+fn the_real_lsp_binary_speaks_only_lsp_on_stdout() {
+    use std::io::Write;
+    use std::process::Stdio;
+
     let home = TempDir::new().unwrap();
-    let out = kellu(&["lsp"], home.path(), home.path());
-    assert_eq!(out.status.code(), Some(3));
-    let stderr = text(&out.stderr);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_kellu"))
+        .arg("lsp")
+        .env_clear()
+        .env("HOME", home.path())
+        .env("XDG_STATE_HOME", home.path().join("state"))
+        .env("PATH", home.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let frame = |body: &str| format!("Content-Length: {}\r\n\r\n{body}", body.len());
+    let mut stdin = child.stdin.take().unwrap();
+    for body in [
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"shutdown"}"#,
+        r#"{"jsonrpc":"2.0","method":"exit"}"#,
+    ] {
+        stdin.write_all(frame(body).as_bytes()).unwrap();
+    }
+    drop(stdin);
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let stdout = text(&out.stdout);
+    assert!(stdout.starts_with("Content-Length: "), "{stdout}");
+    assert_eq!(stdout.matches("Content-Length: ").count(), 2, "{stdout}");
     assert!(
-        stderr.contains("not implemented yet") && stderr.contains("M6"),
-        "{stderr}"
+        !stdout.contains("hoverProvider"),
+        "features are off by default"
+    );
+    assert!(text(&out.stderr).contains("keyring unavailable"));
+}
+
+#[test]
+fn the_real_chat_binary_leaves_at_the_end_of_input() {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let home = TempDir::new().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_kellu"))
+        .arg("chat")
+        .env_clear()
+        .env("HOME", home.path())
+        .env("XDG_STATE_HOME", home.path().join("state"))
+        .env("PATH", home.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"/help\n").unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    let stdout = text(&out.stdout);
+    assert!(
+        stdout.contains("<*> Kellu.") && stdout.contains("/clear"),
+        "{stdout}"
+    );
+    assert!(
+        !stdout.contains('\u{1b}'),
+        "output is not a terminal: no colors"
     );
 }
 

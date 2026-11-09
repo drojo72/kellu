@@ -2,6 +2,7 @@
 
 mod cli;
 mod doctor;
+mod frontends_cmd;
 mod input;
 mod keys;
 mod providers_cmd;

@@ -39,6 +39,7 @@ const TOP_KEYS: &[&str] = &[
     "logging",
     "sessions",
     "sandbox",
+    "lsp",
 ];
 const PROVIDER_KEYS: &[&str] = &["kind", "base_url", "model", "timeout_s", "keyring_name"];
 const ROUTE_KEYS: &[&str] = &["primary", "backup"];
@@ -46,6 +47,7 @@ const ROUTER_KEYS: &[&str] = &["total_timeout_s"];
 const LOGGING_KEYS: &[&str] = &["level", "max_bytes", "backups"];
 const SESSIONS_KEYS: &[&str] = &["enabled", "max_entry_chars"];
 const SANDBOX_KEYS: &[&str] = &["require_patched_bwrap"];
+const LSP_KEYS: &[&str] = &["hover", "completion"];
 
 const SECRET_KEYS: &[&str] = &[
     "api_key",
@@ -110,6 +112,16 @@ pub struct SandboxConfig {
     pub require_patched_bwrap: bool,
 }
 
+/// Kate LSP settings. Both features send code to a model provider, and an editor asks for hovers
+/// and completions on its own (a mouse pause, a typed identifier), so each one is opt-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LspConfig {
+    /// Explain the symbol under the cursor with a model (`textDocument/hover`).
+    pub hover: bool,
+    /// Complete code at the cursor with a model (`textDocument/completion`).
+    pub completion: bool,
+}
+
 /// Validated, immutable configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -120,6 +132,7 @@ pub struct Config {
     logging: LogSettings,
     sessions: SessionsConfig,
     sandbox: SandboxConfig,
+    lsp: LspConfig,
     source: Option<PathBuf>,
 }
 
@@ -164,6 +177,12 @@ impl Config {
     #[must_use]
     pub fn sandbox(&self) -> &SandboxConfig {
         &self.sandbox
+    }
+
+    /// Kate LSP settings.
+    #[must_use]
+    pub fn lsp(&self) -> &LspConfig {
+        &self.lsp
     }
 
     /// The user file that was applied, if there was one.
@@ -495,6 +514,13 @@ pub fn parse_config(
         require_patched_bwrap: get_bool(sandbox_table, "require_patched_bwrap", "sandbox")?,
     };
 
+    let lsp_table = section(&merged, "lsp")?.unwrap_or(&empty);
+    check_keys(lsp_table, LSP_KEYS, "lsp")?;
+    let lsp = LspConfig {
+        hover: get_bool(lsp_table, "hover", "lsp")?,
+        completion: get_bool(lsp_table, "completion", "lsp")?,
+    };
+
     Ok(Config {
         providers,
         routing,
@@ -503,6 +529,7 @@ pub fn parse_config(
         logging,
         sessions,
         sandbox,
+        lsp,
         source,
     })
 }
@@ -727,6 +754,24 @@ mod tests {
         );
         let config = with("[sandbox]\nrequire_patched_bwrap = true\n").unwrap();
         assert!(config.sandbox().require_patched_bwrap);
+    }
+
+    #[test]
+    fn lsp_features_are_off_by_default_and_the_section_is_strict() {
+        let config = with("").unwrap();
+        assert_eq!(
+            config.lsp(),
+            &LspConfig {
+                hover: false,
+                completion: false
+            }
+        );
+        let config = with("[lsp]\ncompletion = true\n").unwrap();
+        assert!(config.lsp().completion && !config.lsp().hover);
+        assert!(
+            message(with("[lsp]\nauto_apply = true\n")).contains("lsp: unknown key(s): auto_apply")
+        );
+        assert!(message(with("[lsp]\nhover = \"yes\"\n")).contains("lsp.hover"));
     }
 
     #[test]
