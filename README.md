@@ -16,7 +16,7 @@
 
 **Secure and modular AI assistant for the Kate editor that thinks before spending tokens.**
 
-> **Status: pre-0.1.0.** Being rebuilt in Rust with a security-first design. Milestones M0 to M5 are done (workspace, strict configuration, private logs and sessions, `kellu doctor`, `kellu config`, model providers and the router with parity against the prototype, the security layer: keyring vault, redaction, deny globs, scope, grants, permissions and audit log, the bubblewrap sandbox with its escape tests, and the tools: a registry with a mandatory risk per tool, proposed changes that only the core applies after you approve them, sandboxed commands and hardened git); the REPL and LSP (M6) are still design, so nothing calls the tools yet. `kellu keys`, `kellu providers test` and `kellu tools` work; the assistant itself does not exist yet. The earlier Python and Ruby prototypes live on the `original-python` and `kellu-prototype-ruby` branches and are the behavioral reference for the port. APIs, commands and configuration will change. Not yet released. Security model: see [SECURITY.md](SECURITY.md).
+> **Status: pre-0.1.0.** Being rebuilt in Rust with a security-first design. Milestones M0 to M6 are done (workspace, strict configuration, private logs and sessions, `kellu doctor`, `kellu config`, model providers and the router with parity against the prototype, the security layer: keyring vault, redaction, deny globs, scope, grants, permissions and audit log, the bubblewrap sandbox with its escape tests, and the tools: a registry with a mandatory risk per tool, proposed changes that only the core applies after you approve them, sandboxed commands and hardened git, and the frontends: a terminal chat and a Kate LSP server for hover and completion). The model can explain and complete code and chat, but it does not call the tools yet (the agent loop is 0.2.0). The earlier Python and Ruby prototypes live on the `original-python` and `kellu-prototype-ruby` branches and are the behavioral reference for the port. APIs, commands and configuration will change. Not yet released. Security model: see [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -123,17 +123,17 @@ kellu/
 │   ├── kellu-sandbox/     # bubblewrap, policy derived from the Grant, staging, limits
 │   ├── kellu-projects/    # (M5) discovery, stack detection, scopes
 │   ├── kellu-tools/       # registry with mandatory risk level; proposals and apply; files, shell, git, gh
-│   └── kellu-frontends/   # (M6) REPL, LSP, terminal theme (later: gateway, ACP, MCP server)
+│   └── kellu-frontends/   # REPL, LSP, terminal theme (later: gateway, ACP, MCP server)
 ├── kellu/                 # binary crate: CLI, doctor
 ├── docs/                  # ARCHITECTURE.md, PORTING.md, porting/, design notes
 └── packaging/             # desktop entry
 ```
 
-Crates are added **when their milestone starts**, not before. Present today: `kellu-common` (M0), `kellu-core` and `kellu-providers` (M1; clients, transport and router since M2), `kellu-security` (M3), `kellu-sandbox` (M4) and `kellu-tools` (M5). Still to come: `kellu-projects`, `kellu-frontends` (M6), and later a `kellu-memory` crate (0.4.0, SQLite and optional pgvector). The decision cascade lives in `kellu-core` (0.2.0 to 0.4.0) and the MCP client in `kellu-tools` (0.5.0). The dependency direction is enforced by Cargo (a cycle does not compile) and by a test over `cargo metadata`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PORTING.md](docs/PORTING.md).
+Crates are added **when their milestone starts**, not before. Present today: `kellu-common` (M0), `kellu-core` and `kellu-providers` (M1; clients, transport and router since M2), `kellu-security` (M3), `kellu-sandbox` (M4) `kellu-tools` (M5) and `kellu-frontends` (M6). Still to come: `kellu-projects`, and later a `kellu-memory` crate (0.4.0, SQLite and optional pgvector). The decision cascade lives in `kellu-core` (0.2.0 to 0.4.0) and the MCP client in `kellu-tools` (0.5.0). The dependency direction is enforced by Cargo (a cycle does not compile) and by a test over `cargo metadata`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/PORTING.md](docs/PORTING.md).
 
 ## Quick start
 
-> Commands describe the **target interface** and may change before 0.1.0. Today `kellu --version`, `kellu doctor`, `kellu config path|check|show`, `kellu keys list|set|rm|cleanup-legacy` and `kellu providers test` work; `tools` and `lsp` report that they are not implemented yet.
+> Commands describe the **target interface** and may change before 0.1.0. Today `kellu --version`, `kellu doctor`, `kellu config path|check|show`, `kellu keys list|set|rm|cleanup-legacy`, `kellu providers test`, `kellu tools`, `kellu chat` (or plain `kellu` in a terminal) and `kellu lsp` work.
 
 Requirements (Linux first): a Rust toolchain to build from source, `libsecret-tools` (`secret-tool`), `bubblewrap` and `busctl` (part of systemd; only needed to list keys). On Debian/Ubuntu:
 
@@ -158,7 +158,8 @@ kellu config show            # providers, routes and key names (never values)
 kellu keys set openrouter    # secret read from stdin (hidden on a terminal), stored in your keyring, never printed
 kellu keys list              # names and tiers, never values
 kellu providers test         # one tiny request per provider: endpoint, model and key
-kellu                        # terminal assistant
+kellu chat                   # terminal chat (plain `kellu` does the same in a terminal)
+kellu tools                  # the tools and the risk of each
 ```
 
 If you have entries under the previous keyring schema (attribute `kai`), `kellu keys cleanup-legacy` lists them (names only) and `--apply` deletes only those that already exist under the new schema. Copying old entries is not automated.
@@ -177,6 +178,16 @@ In Kate: *Settings → Configure Kate → LSP Client → User Server Settings*. 
   }
 }
 ```
+
+Hover and completion are **off by default**: Kate asks for them on its own (a mouse pause, a typed identifier) and each one sends code around the cursor to your provider (redacted, never from denied files or files outside the project). Turn them on in `config.toml`:
+
+```toml
+[lsp]
+hover = true
+completion = true
+```
+
+The project root must be a project (a `.git` directory or similar) and not your home directory. Replies are synchronous, so a slow provider makes Kate wait.
 
 In 0.1.0 Kellu’s LSP server provides **hover** and **completion**; diagnostics and quick-fix suggestions arrive with the agent work in 0.2.0. Chat, diff previews and ghost text need other frontends (see [docs/design/lsp-capabilities.md](docs/design/lsp-capabilities.md)). Check Kate’s LSP client documentation for the exact format on your version.
 
@@ -218,7 +229,7 @@ M0 to M2 were first implemented in the Python prototype and are being ported wit
 - [x] **M3** `kellu keys` with tiers, `kellu providers test`, scrubbed environment, deny globs, redaction v1, risk-based permissions, scope and grants, audit log
 - [x] **M4** Sandbox: bubblewrap with a policy derived from the `Grant`, staging copy, resource limits, `kellu doctor`, escape tests against real bubblewrap
 - [x] **M5** Tools with declared schemas and risk levels: files, sandboxed shell, read-only git; git/gh writes on host with confirmation
-- [ ] **M6** Terminal REPL on top of the core; LSP for Kate (hover, completion)
+- [x] **M6** Terminal REPL on top of the core; LSP for Kate (hover, completion)
 - [ ] **M7** Documentation and 0.1.0 tag
 
 ## Related projects

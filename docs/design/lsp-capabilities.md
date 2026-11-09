@@ -52,6 +52,38 @@ server configuration through the `lspclient` entry of `.kateproject`; one server
 Between frontends, share state through files in the state directory (proposals and the audit log)
 in 0.1.0. A shared local daemon can come later if several LSP instances become a problem.
 
+## Implemented in M6 (0.1.0)
+
+`kellu lsp` serves hover and completion over standard input and output (`kellu-frontends`, module
+`lsp`; the model request is built in `kellu-core::assist`). What is built, and where it departs
+from or settles the notes above:
+
+- **Both features are opt-in** (`[lsp] hover`, `[lsp] completion`, default off). The table says
+  completion "runs only on manual request" because it has no trigger characters, but an editor may
+  still invoke it as you type and hover fires on a mouse pause; the protocol does not say which,
+  and each call sends code to a provider. A project can switch a feature off through
+  `initializationOptions.kellu`, never on. A disabled feature is not advertised, so Kate does not
+  ask for it.
+- **Documents:** full-text sync. Only `file:` URIs without a remote host, query, fragment, NUL or
+  `..` (after percent-decoding). The document must resolve inside the project scope (`Scope::open`
+  refuses `/`, `$HOME`, its ancestors and a root without a project marker; a refused root keeps
+  the handshake alive and disables the model features), pass the deny globs, and be neither a
+  symlink nor behind one. A file that does not exist yet (an unsaved buffer) is allowed when its
+  directory is. The check runs again on every request, so a file swapped for a link after opening
+  is refused. Denied or oversized (over 2 MiB) documents are not kept; at most 64 are held; a
+  ranged change (not advertised) or an older version drops the copy.
+- **Hover:** the identifier under the cursor with a bounded window of code, answered as plain
+  text (never Markdown), cached per document version.
+- **Completion:** one item with a plain-text `textEdit` at the cursor (`insertTextFormat` 1, so
+  `$1` in a model answer is never expanded), `filterText` set to the word being typed, no trigger
+  characters.
+- **Limits:** the server is single-threaded and a model call blocks it until the provider answers
+  or fails (the router budget applies); `$/cancelRequest` is ignored. Errors become an empty result
+  and a line in the private log, never a message to Kate.
+- **To verify on a real Kate:** that completion items show and filter as intended with the
+  `filterText` rule, how often Kate calls hover and completion in practice, and the exact
+  `servers` JSON for your version.
+
 ## Trust notes
 
 - **Root:** when Kate cannot determine a root it falls back to the home directory. Kellu rejects

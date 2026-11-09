@@ -25,14 +25,14 @@ dependency rule that tests enforce (`kellu/tests/architecture.rs`).
 | `kellu-providers` | Model provider clients (OpenAI-compatible, Google), HTTP transport, provider-neutral types. They receive their configuration and a key lookup; they never read either themselves. | `common` |
 | `kellu-projects` | Project discovery, stack detection. | `common` |
 | `kellu-tools` | Tool registry with schemas and mandatory risk levels; proposals and their approved application; file, shell, git and `gh` tools. | `common`, `security`, `sandbox` |
-| `kellu-core` | Config, router (task classification, fallback chains, time budget), logging, sessions, (later) cascade and agent loop. | all layers above |
+| `kellu-core` | Config, router (task classification, fallback chains, time budget), logging, sessions, `assist` (editor text to bounded, redacted, fenced model requests), (later) cascade and agent loop. | all layers above |
 | `kellu-frontends` | Terminal REPL, Kate LSP, (later) gateway, ACP, MCP server. | all layers above and `core` |
 | `kellu` (binary) | CLI and `doctor`. | everything |
 
 ```mermaid
 flowchart TD
     bin["kellu (binary)<br/>CLI · doctor"]:::done
-    fe["kellu-frontends<br/>REPL · LSP · M6"]:::todo
+    fe["kellu-frontends<br/>REPL · LSP · theme"]:::done
     core["kellu-core<br/>config · log · session · router"]:::done
     tools["kellu-tools<br/>registry · proposals · apply · files · shell · git"]:::done
     proj["kellu-projects · M5"]:::todo
@@ -51,8 +51,9 @@ flowchart TD
     classDef todo fill:#F4F0E7,stroke:#B87355,color:#14253D,stroke-dasharray:4 3
 ```
 
-Solid dark nodes exist today (M0 to M4); dashed nodes are created when their milestone starts.
-In the code the binary calls `core` directly until `frontends` exists (M6).
+Solid dark nodes exist today (M0 to M6); dashed nodes are created when their milestone starts.
+The binary builds the `Assistant` (in `core`, module `assist`) and hands it to a frontend; the
+frontends reach a model only through `Assistant`, so redaction, bounding and fencing cannot be skipped.
 
 One edge goes beyond the earlier Python layering: `sandbox -> security`, because the sandbox
 mounts are derived from the `Grant` (see `design/permissions-and-sandbox.md`) and the `Grant`
@@ -88,9 +89,9 @@ kellu/
 │   ├── kellu-security/      M3  vault, redaction, deny globs, permissions, scope, Grant, audit
 │   ├── kellu-sandbox/       M4  bubblewrap, policy from the Grant, staging, limits, probe; M5 run_host
 │   ├── kellu-tools/         M5  registry with mandatory risk level, proposals and apply, files, shell, git, gh
+│   ├── kellu-frontends/     M6  REPL, LSP, terminal theme
 │       (created when their milestone starts)
 │       kellu-projects/      M5  discovery, stack detection
-│       kellu-frontends/     M6  REPL, LSP, terminal theme
 ├── kellu/                   M0  binary crate: CLI, doctor; tests/ has end-to-end and architecture
 ├── docs/                    ARCHITECTURE.md, PORTING.md, porting/, design/
 └── packaging/               desktop entry
@@ -106,7 +107,8 @@ kellu/
 | M3 | done | `kellu-security`, `kellu-core` (default redaction), `kellu` (`keys`, `providers test`) |
 | M4 | done | `kellu-sandbox`, `kellu-security` (`openat2_available`), `kellu-core` (`[sandbox]` config), `kellu` (`doctor`) |
 | M5 | done | `kellu-tools`, `kellu-security` (`Scope::open_dir`, `Grant::without_network`), `kellu-sandbox` (`run_host`), `kellu` (`tools`, `doctor`) |
-| M6 to M7 | planned | see Layout |
+| M6 | done | `kellu-frontends` (new), `kellu-core` (`assist`, `[lsp]` config), `kellu` (`chat`, `lsp`) |
+| M7 | planned | see Layout |
 
 ## Providers and router (M2)
 
@@ -161,7 +163,7 @@ Transport rules (`kellu-providers`, enforced by tests in `crates/kellu-providers
 | Sandbox mounts derived from a grant, staging copy | M4 (done; consumed from M5) | `kellu-sandbox`, modules `policy`, `staging`, `bwrap` |
 | Proposal contract and host-side apply | M5 (done) | `kellu-tools`, modules `proposal`, `apply` |
 | Tool registry, risk enforcement | M5 (done) | `kellu-tools`, modules `spec`, `registry` |
-| Kate LSP server (hover, completion; later diagnostics, code actions) | M6, 0.2.0 | `kellu-frontends`, module `lsp` |
+| Kate LSP server (hover, completion; later diagnostics, code actions) | M6 (done), 0.2.0 | `kellu-frontends`, module `lsp` |
 
 Protocol adapters (ACP, MCP, gateway) are **frontends** or **tools**, never top-level crates.
 Adding `kellu-memory` or any other crate means adding its row to `ALLOWED` in the same change.

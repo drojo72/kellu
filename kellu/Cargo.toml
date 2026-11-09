@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 kellu-common.workspace = true
 kellu-core.workspace = true
+kellu-frontends.workspace = true
 kellu-providers.workspace = true
 kellu-sandbox.workspace = true
 kellu-tools.workspace = true

@@ -19,6 +19,7 @@ kellu-sandbox = { path = "crates/kellu-sandbox", version = "0.1.0-dev.0" }
 kellu-tools = { path = "crates/kellu-tools", version = "0.1.0-dev.0" }
 kellu-providers = { path = "crates/kellu-providers", version = "0.1.0-dev.0" }
 kellu-core = { path = "crates/kellu-core", version = "0.1.0-dev.0" }
+kellu-frontends = { path = "crates/kellu-frontends", version = "0.1.0-dev.0" }
 
 # External crates. Every entry needs a one-line justification here.
 clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] } # CLI parsing

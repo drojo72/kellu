@@ -148,7 +148,7 @@ Still proposed (confirm and justify per milestone):
 | Hashing | `sha2` | M3 (done) |
 | Diffs | own: hunks resolved to byte offsets against a SHA-256 (no crate); `similar` stays a candidate for a rendered diff | M5 (done) |
 | Gitignore | `ignore` | M3 or M5 |
-| LSP | `lsp-server`, `lsp-types` | M6 |
+| LSP | own: `Content-Length` framing and the few messages over `serde_json` (no `lsp-server` or `lsp-types`: one dependency tree fewer for eight messages) | M6 (done) |
 | Sandbox fallback | `landlock` | later |
 | Tests | `proptest`, `assert_cmd`, `predicates`, `insta` | per milestone |
 | CI tooling | `cargo-deny`, `cargo-audit` | M0 |

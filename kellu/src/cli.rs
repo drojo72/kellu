@@ -1,9 +1,9 @@
 //! Command-line parsing and dispatch.
 //!
-//! Exit codes: 0 ok, 1 error, 2 usage (clap), 3 not implemented.
+//! Exit codes: 0 ok, 1 error, 2 usage (clap).
 
 use std::ffi::OsString;
-use std::io::Write;
+use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
 
 use std::sync::Arc;
@@ -15,14 +15,14 @@ use kellu_providers::{KeyLookup, Provider, ProviderConfig, build_provider_capped
 use kellu_security::{SecretToolStore, Vault};
 use secrecy::SecretString;
 
-use crate::{doctor, input, keys, providers_cmd, tools_cmd};
+use kellu_frontends::theme::Theme;
+
+use crate::{doctor, frontends_cmd, input, keys, providers_cmd, tools_cmd};
 
 /// Success.
 pub const EXIT_OK: u8 = 0;
 /// A runtime error or a failed check.
 pub const EXIT_ERROR: u8 = 1;
-/// The command exists in the design but is not built yet (2 is reserved for usage errors).
-pub const EXIT_NOT_IMPLEMENTED: u8 = 3;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -56,7 +56,9 @@ enum Command {
     },
     /// List the tools the assistant may use and what each needs from you
     Tools,
-    /// (planned for M6)
+    /// Chat in the terminal (also what plain `kellu` does when run in a terminal)
+    Chat,
+    /// Run the language server for Kate on standard input and output (hover and completion)
     Lsp,
 }
 
@@ -102,20 +104,6 @@ enum ConfigAction {
     Show,
 }
 
-impl Command {
-    /// The milestone that will implement a command that is only planned.
-    fn planned(&self) -> Option<(&'static str, &'static str)> {
-        match self {
-            Self::Lsp => Some(("lsp", "M6")),
-            Self::Doctor
-            | Self::Tools
-            | Self::Config { .. }
-            | Self::Keys { .. }
-            | Self::Providers { .. } => None,
-        }
-    }
-}
-
 pub(crate) fn say(out: &mut dyn Write, text: &str) {
     // A closed pipe (`kellu doctor | head`) must not crash the process.
     let _ = writeln!(out, "{text}");
@@ -134,6 +122,8 @@ pub type ProviderBuilder = Box<dyn Fn(&ProviderConfig, &KeyLookup) -> Box<dyn Pr
 
 /// Probes the sandbox given the paths of `bwrap` and, if found, `prlimit`.
 pub type ProbeBox = Box<dyn Fn(&Path, Option<&Path>) -> kellu_sandbox::Probe>;
+/// Standard input for the interactive commands.
+pub type InputFactory = Box<dyn Fn() -> Box<dyn BufRead>>;
 
 /// Everything the commands reach outside the process through, so tests can replace it.
 pub struct Services {
@@ -144,6 +134,16 @@ pub struct Services {
     pub load: Box<dyn Fn() -> kellu_common::Result<Config>>,
     /// Probes bubblewrap (and `prlimit`) for `kellu doctor`.
     pub probe: ProbeBox,
+    /// Builds the clients the assistant talks through (the full per-provider timeout).
+    pub build_assistant_provider: ProviderBuilder,
+    /// Standard input for `kellu chat` and `kellu lsp`.
+    pub stdin: InputFactory,
+    /// The terminal theme for `kellu chat`.
+    pub theme: Box<dyn Fn() -> Theme>,
+    /// Whether standard input and output are both terminals: bare `kellu` chats only then.
+    pub interactive: Box<dyn Fn() -> bool>,
+    /// The user's home directory (a project root that contains it is refused).
+    pub home: Box<dyn Fn() -> kellu_common::Result<std::path::PathBuf>>,
 }
 
 impl Services {
@@ -174,6 +174,20 @@ impl Services {
             probe: Box::new(|bwrap, prlimit| {
                 kellu_sandbox::probe(bwrap, prlimit, &kellu_sandbox::SystemLayout::host())
             }),
+            build_assistant_provider: Box::new(|config, lookup| {
+                kellu_providers::build_provider(config, lookup)
+            }),
+            stdin: Box::new(|| Box::new(std::io::stdin().lock())),
+            theme: Box::new(|| {
+                Theme::detect(
+                    &|name| std::env::var(name).ok(),
+                    std::io::stdout().is_terminal(),
+                )
+            }),
+            interactive: Box::new(|| {
+                std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
+            }),
+            home: Box::new(kellu_security::scope::home_dir),
         }
     }
 }
@@ -287,10 +301,13 @@ where
             return u8::try_from(error.exit_code()).unwrap_or(EXIT_ERROR);
         }
     };
-    let Some(command) = cli.command else {
-        say(out, &Cli::command().render_help().to_string());
-        say(err, "\nThe interactive assistant arrives in milestone M6.");
-        return EXIT_OK;
+    let command = match cli.command {
+        Some(command) => command,
+        None if (services.interactive)() => Command::Chat,
+        None => {
+            say(out, &Cli::command().render_help().to_string());
+            return EXIT_OK;
+        }
     };
     match command {
         Command::Doctor => doctor::run(
@@ -336,21 +353,13 @@ where
             providers_cmd::test(&config, name.as_deref(), &vault, services, out, err)
         }
         Command::Tools => tools_cmd::list(out, err),
+        Command::Chat => frontends_cmd::chat(services, out, err),
+        Command::Lsp => frontends_cmd::lsp(services, out, err),
         Command::Config { action } => match action {
             ConfigAction::Path => config_path(out, err),
             ConfigAction::Check => config_check(out, err),
             ConfigAction::Show => config_show(out, err),
         },
-        planned => {
-            let (name, milestone) = planned
-                .planned()
-                .unwrap_or(("command", "a later milestone"));
-            say(
-                err,
-                &format!("{NAME} {name}: not implemented yet (planned for {milestone})."),
-            );
-            EXIT_NOT_IMPLEMENTED
-        }
     }
 }
 
@@ -360,7 +369,7 @@ mod tests {
     use std::sync::Mutex;
 
     use kellu_common::ProviderError;
-    use kellu_providers::{ChatRequest, ChatResponse, EventStream};
+    use kellu_providers::{ChatRequest, ChatResponse, EventStream, StreamEvent};
     use kellu_security::{MemoryStore, SecretStore};
     use secrecy::ExposeSecret;
 
@@ -399,7 +408,23 @@ mod tests {
             })
         }
         fn stream(&self, _: &ChatRequest) -> EventStream {
-            Box::new(std::iter::empty())
+            match &self.outcome {
+                Ok(()) => Box::new(
+                    vec![
+                        Ok(StreamEvent::Text("ok".to_owned())),
+                        Ok(StreamEvent::Done(Box::new(ChatResponse {
+                            text: "ok".to_owned(),
+                            provider: self.name.clone(),
+                            model: None,
+                            tool_calls: Vec::new(),
+                            finish_reason: None,
+                            usage: None,
+                        }))),
+                    ]
+                    .into_iter(),
+                ),
+                Err(error) => Box::new(std::iter::once(Err(error.clone()))),
+            }
         }
     }
 
@@ -449,6 +474,11 @@ mod tests {
                 prlimit: true,
                 openat2: true,
             }),
+            build_assistant_provider: fake_builder(failing, Arc::clone(&seen_for_builder)),
+            stdin: Box::new(|| Box::new(std::io::Cursor::new(Vec::new()))),
+            theme: Box::new(|| Theme::at(kellu_frontends::theme::Level::Ascii)),
+            interactive: Box::new(|| false),
+            home: Box::new(|| Ok(std::path::PathBuf::from("/nonexistent/kellu-home"))),
         };
         Harness {
             store,
@@ -578,5 +608,84 @@ mod tests {
         let (code, _, err) = run_args(&h, &["keys", "list"]);
         assert_eq!(code, 1);
         assert!(err.contains("secret-tool not found"));
+    }
+    fn feed(h: &mut Harness, input: &'static [u8]) {
+        h.services.stdin = Box::new(move || Box::new(std::io::Cursor::new(input.to_vec())));
+    }
+
+    fn frame(body: &str) -> Vec<u8> {
+        format!("Content-Length: {}\r\n\r\n{body}", body.len()).into_bytes()
+    }
+
+    #[test]
+    fn chat_answers_through_the_configured_provider() {
+        let mut h = harness(&[], "x");
+        feed(&mut h, b"hello\n/exit\n");
+        let (code, out, err) = run_args(&h, &["chat"]);
+        assert_eq!(code, EXIT_OK, "{err}");
+        assert!(out.contains("<*> Kellu.") && out.contains("ok"), "{out}");
+    }
+
+    #[test]
+    fn chat_still_starts_without_a_keyring_and_says_so() {
+        let mut h = harness(&[], "x");
+        h.services.vault = Box::new(|| Err(kellu_common::KelluError::config("no secret-tool")));
+        feed(&mut h, b"/exit\n");
+        let (code, _, err) = run_args(&h, &["chat"]);
+        assert_eq!(code, EXIT_OK);
+        assert!(err.contains("keyring unavailable"), "{err}");
+    }
+
+    #[test]
+    fn bare_kellu_chats_on_a_terminal_and_prints_help_otherwise() {
+        let mut h = harness(&[], "x");
+        feed(&mut h, b"/exit\n");
+        assert!(
+            run_args(&h, &[]).1.contains("Usage"),
+            "not a terminal: help"
+        );
+        h.services.interactive = Box::new(|| true);
+        let (code, out, _) = run_args(&h, &[]);
+        assert_eq!(code, EXIT_OK);
+        assert!(out.contains("Kellu. /help"), "{out}");
+    }
+
+    #[test]
+    fn lsp_serves_the_protocol_on_stdout_only_and_says_when_features_are_off() {
+        let mut h = harness(&[], "x");
+        let mut wire = frame(r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
+        wire.extend(frame(r#"{"jsonrpc":"2.0","id":2,"method":"shutdown"}"#));
+        wire.extend(frame(r#"{"jsonrpc":"2.0","method":"exit"}"#));
+        h.services.stdin = Box::new(move || Box::new(std::io::Cursor::new(wire.clone())));
+        let (code, out, err) = run_args(&h, &["lsp"]);
+        assert_eq!(code, EXIT_OK, "{err}");
+        let mut cursor = std::io::Cursor::new(out.into_bytes());
+        let first = kellu_frontends::lsp::transport::read_message(&mut cursor)
+            .unwrap()
+            .unwrap();
+        assert!(
+            first["result"]["capabilities"]
+                .get("hoverProvider")
+                .is_none()
+        );
+        let second = kellu_frontends::lsp::transport::read_message(&mut cursor)
+            .unwrap()
+            .unwrap();
+        assert_eq!(second["id"], 2);
+        assert!(
+            kellu_frontends::lsp::transport::read_message(&mut cursor)
+                .unwrap()
+                .is_none()
+        );
+        assert!(err.contains("hover and completion are off"), "{err}");
+    }
+
+    #[test]
+    fn lsp_with_broken_framing_exits_with_an_error_and_a_clean_stdout() {
+        let mut h = harness(&[], "x");
+        feed(&mut h, b"this is not LSP\r\n\r\n");
+        let (code, out, _) = run_args(&h, &["lsp"]);
+        assert_eq!(code, EXIT_ERROR);
+        assert!(out.is_empty(), "{out:?}");
     }
 }

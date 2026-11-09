@@ -78,3 +78,9 @@ max_entry_chars = 2000
 [sandbox]
 # true refuses a bubblewrap older than 0.12.0 (GHSA-pxhw-h44j-8pfx); false allows it with a warning.
 require_patched_bwrap = false
+
+[lsp]
+# Both send code around the cursor (redacted, never from denied files) to a model provider. Kate asks
+# for hovers and completions by itself, so they are off until you turn them on.
+hover = false
+completion = false

@@ -1,0 +1,24 @@
+[package]
+name = "kellu-frontends"
+description = "Kellu frontends: terminal REPL, Kate LSP server and the terminal theme."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+kellu-common.workspace = true
+kellu-security.workspace = true
+kellu-providers.workspace = true
+kellu-core.workspace = true
+log.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true
