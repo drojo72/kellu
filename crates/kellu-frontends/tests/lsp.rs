@@ -729,3 +729,70 @@ fn a_project_reached_through_a_symlinked_path_still_works() {
     assert_ne!(hover(&mut server, &via_alias, 0, 1), Value::Null);
     assert_eq!(probe.calls(), 1);
 }
+
+#[test]
+fn when_kate_sends_the_home_directory_each_document_uses_its_own_project() {
+    let d = dirs();
+    let (assistant, probe) = common::assistant("explained");
+    let work = d.home.join("work");
+    fs::create_dir_all(work.join(".git")).unwrap();
+    fs::create_dir_all(work.join("src")).unwrap();
+    let file = work.join("src/a.rs");
+    fs::write(&file, "fn alpha() {}\n").unwrap();
+    fs::write(work.join(".env"), "SECRET=1\n").unwrap();
+    let notes = d.home.join("notes");
+    fs::create_dir_all(&notes).unwrap();
+    fs::write(notes.join("n.md"), "alpha\n").unwrap();
+    fs::create_dir_all(d.home.join(".git")).unwrap();
+    fs::write(d.home.join("loose.rs"), "fn beta() {}\n").unwrap();
+
+    let mut server = Server::new(&assistant, BOTH, d.home.clone());
+    // Kate's fallback root: refused as a scope, but the handshake still succeeds.
+    let reply = initialize(&mut server, &d.home, None);
+    assert!(reply.get("error").is_none());
+
+    open(&mut server, &file, "fn alpha() {}\n", 1);
+    assert_ne!(
+        hover(&mut server, &file, 0, 4),
+        Value::Null,
+        "found its project"
+    );
+    assert_eq!(probe.calls(), 1);
+
+    // Inside that project the deny globs still apply, also for a buffer not yet saved.
+    let secret = work.join(".env");
+    open(&mut server, &secret, "SECRET=1\n", 1);
+    assert_eq!(hover(&mut server, &secret, 0, 2), Value::Null);
+    let unsaved_secret = work.join("src/.env.local");
+    open(&mut server, &unsaved_secret, "SECRET=1\n", 1);
+    assert_eq!(hover(&mut server, &unsaved_secret, 0, 2), Value::Null);
+
+    // No project marker below the home directory: refused. A marker in the home itself does not
+    // count either, because the home directory is never a scope.
+    let note = notes.join("n.md");
+    open(&mut server, &note, "alpha\n", 1);
+    assert_eq!(hover(&mut server, &note, 0, 2), Value::Null);
+    let loose = d.home.join("loose.rs");
+    open(&mut server, &loose, "fn beta() {}\n", 1);
+    assert_eq!(hover(&mut server, &loose, 0, 4), Value::Null);
+    assert_eq!(
+        probe.calls(),
+        1,
+        "nothing but the project file reached the model"
+    );
+}
+
+#[test]
+fn a_valid_client_root_is_not_widened_by_other_projects() {
+    let d = dirs();
+    let (assistant, probe) = common::assistant("x");
+    let other = d.home.join("other");
+    fs::create_dir_all(other.join(".git")).unwrap();
+    fs::write(other.join("o.rs"), "fn gamma() {}\n").unwrap();
+    let mut server = Server::new(&assistant, BOTH, d.home.clone());
+    initialize(&mut server, &d.proj, None);
+    let file = other.join("o.rs");
+    open(&mut server, &file, "fn gamma() {}\n", 1);
+    assert_eq!(hover(&mut server, &file, 0, 4), Value::Null);
+    assert_eq!(probe.calls(), 0);
+}

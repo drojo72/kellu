@@ -64,6 +64,10 @@ from or settles the notes above:
   and each call sends code to a provider. A project can switch a feature off through
   `initializationOptions.kellu`, never on. A disabled feature is not advertised, so Kate does not
   ask for it.
+- **Project root:** the root Kate sends is validated with `Scope::open`. If it is refused (Kate
+  falls back to the home directory when it finds no project), each opened document is matched to
+  the nearest directory with a project marker below the home directory (at most 8 are kept); a
+  document with none stays refused, and a valid client root is never widened by other projects.
 - **Documents:** full-text sync. Only `file:` URIs without a remote host, query, fragment, NUL or
   `..` (after percent-decoding). The document must resolve inside the project scope (`Scope::open`
   refuses `/`, `$HOME`, its ancestors and a root without a project marker; a refused root keeps
@@ -80,9 +84,11 @@ from or settles the notes above:
 - **Limits:** the server is single-threaded and a model call blocks it until the provider answers
   or fails (the router budget applies); `$/cancelRequest` is ignored. Errors become an empty result
   and a line in the private log, never a message to Kate.
-- **To verify on a real Kate:** that completion items show and filter as intended with the
-  `filterText` rule, how often Kate calls hover and completion in practice, and the exact
-  `servers` JSON for your version.
+- **Verified on a real Kate (2026-11-13):** hover and completion work on Rust files in a project with
+  a `.git` directory, with a `servers` entry of its own and an absolute command path.
+- **Still to verify:** the other highlighting modes, Kellu next to another server on the same
+  document, how often Kate calls hover and completion in practice, and whether `.kateproject` can
+  override the server command.
 
 ## Trust notes
 

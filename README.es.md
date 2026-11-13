@@ -171,13 +171,17 @@ En Kate: *Preferencias → Configurar Kate → Cliente LSP → Configuración de
 ```json
 {
   "servers": {
-    "python": {
-      "command": ["kellu", "lsp"],
-      "highlightingModeRegex": "^Python$"
+    "kellu": {
+      "command": ["/home/TU_USUARIO/.cargo/bin/kellu", "lsp"],
+      "highlightingModeRegex": "^(Rust|Python|Markdown|YAML|JSON|TOML|Bash|C|C\\+\\+|JavaScript|TypeScript)$"
     }
   }
 }
 ```
+
+Usa la ruta absoluta: un Kate lanzado desde el menú suele no tener `~/.cargo/bin` en el `PATH`. Kate elige el servidor por el *modo de resaltado* del documento: lista los que quieras y no uses `.*`, que enviaría a un proveedor cualquier tipo de archivo. La clave `kellu` es un nombre propio: una clave como `python` o `rust` *reemplazaría* el servidor que Kate trae para ese lenguaje. Reinicia Kate (o el servidor) después de editar esto o `config.toml`.
+
+Verificado en un Kate real: hover y completado en archivos Rust. Los demás modos de la lista usan el mismo mecanismo pero no se han probado, y tampoco se ha verificado si Kate puede ejecutar Kellu junto a otro servidor sobre el mismo documento (por ejemplo `rust-analyzer`).
 
 Hover y completado vienen **desactivados**: Kate los pide por su cuenta (una pausa del ratón, un identificador tecleado) y cada uno envía código alrededor del cursor a tu proveedor (redactado, nunca de archivos denegados ni de fuera del proyecto). Actívalos en `config.toml`:
 
@@ -187,7 +191,7 @@ hover = true
 completion = true
 ```
 
-La raíz debe ser un proyecto (un directorio `.git` o similar) y no tu directorio personal. Las respuestas son síncronas: un proveedor lento hace esperar a Kate.
+El archivo debe estar en un proyecto (un directorio `.git`, `Cargo.toml` o similar bajo tu directorio personal); Kate manda tu directorio personal como raíz cuando no encuentra proyecto, y Kellu busca entonces el proyecto de cada archivo. Las respuestas son síncronas: un proveedor lento hace esperar a Kate.
 
 En 0.1.0 el servidor LSP de Kellu ofrece **hover** y **completado**; los diagnósticos y las sugerencias de corrección rápida llegan con el trabajo del agente en 0.2.0. El chat, la vista previa de diffs y el texto fantasma necesitan otros frontends (ver [docs/design/lsp-capabilities.md](docs/design/lsp-capabilities.md)). Revisa la documentación del cliente LSP de Kate para el formato exacto en tu versión.
 

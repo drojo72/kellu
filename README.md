@@ -171,13 +171,17 @@ In Kate: *Settings → Configure Kate → LSP Client → User Server Settings*. 
 ```json
 {
   "servers": {
-    "python": {
-      "command": ["kellu", "lsp"],
-      "highlightingModeRegex": "^Python$"
+    "kellu": {
+      "command": ["/home/YOU/.cargo/bin/kellu", "lsp"],
+      "highlightingModeRegex": "^(Rust|Python|Markdown|YAML|JSON|TOML|Bash|C|C\\+\\+|JavaScript|TypeScript)$"
     }
   }
 }
 ```
+
+Use the absolute path: Kate started from a menu often lacks `~/.cargo/bin` in its `PATH`. Kate picks a server by the document's *highlighting mode*, so list the modes you want; do not use `.*`, which would send every kind of file to a provider. The key `kellu` is a name of your own: a key such as `python` or `rust` would *replace* Kate's built-in server for that language. Restart Kate (or the server) after editing this or `config.toml`.
+
+Verified on a real Kate: hover and completion on Rust files. The other modes in the list use the same mechanism but have not been tried, and whether Kate can run Kellu next to another server on the same document (for example `rust-analyzer`) has not been verified.
 
 Hover and completion are **off by default**: Kate asks for them on its own (a mouse pause, a typed identifier) and each one sends code around the cursor to your provider (redacted, never from denied files or files outside the project). Turn them on in `config.toml`:
 
@@ -187,7 +191,7 @@ hover = true
 completion = true
 ```
 
-The project root must be a project (a `.git` directory or similar) and not your home directory. Replies are synchronous, so a slow provider makes Kate wait.
+The file must live in a project (a `.git` directory, `Cargo.toml` or similar below your home directory); Kate sends your home directory as the root when it finds no project, and Kellu then looks for the project of each file. Replies are synchronous, so a slow provider makes Kate wait.
 
 In 0.1.0 Kellu’s LSP server provides **hover** and **completion**; diagnostics and quick-fix suggestions arrive with the agent work in 0.2.0. Chat, diff previews and ghost text need other frontends (see [docs/design/lsp-capabilities.md](docs/design/lsp-capabilities.md)). Check Kate’s LSP client documentation for the exact format on your version.
 

@@ -18,6 +18,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 
 ## [Unreleased]
 
+### Changed
+- Packaged routes: `code` and `explain` now start with `gemma_direct` (the old primaries failed on
+  balance or demand and made the first hover take seconds). Provider `groq` uses
+  `llama-3.1-8b-instant`: `llama-3.3-70b-versatile` was retired and answered 404 (id not yet
+  confirmed with a real call).
+
 ### Added
 - Packaged provider `groq` (OpenAI-compatible, `llama-3.3-70b-versatile`); the `general` route is
   now `gemma_direct` -> `groq` -> `openrouter` (provisional, for testing).
@@ -49,6 +55,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   - `kellu-core`: sessions redact secrets by default (they used the identity function before).
   - Dependencies: `sha2` (and six RustCrypto crates below it), `zeroize` (already in the tree),
     `rustix` features `stdio` and `termios`.
+- **M7** (LSP fix): when Kate sends the home directory as the project root (it does so when it
+  finds no project), the server no longer disables itself for good: each document uses the
+  project it lives in (the nearest directory with a marker such as `.git`, never the home directory
+  or an ancestor). A valid root from the client is never widened. Before this, hover and completion
+  returned nothing in that case and the only trace was a line in the private log.
+- **M7** (LSP diagnostics): when hover or completion return nothing, the server now writes the
+  reason once per cause to the private log (`lsp: hover: ...`): document refused (and why), empty
+  model answer, or failed model request. Only paths and reasons are logged, never document text.
+- **M7** (token budget): hover and completion request up to 1024 tokens (were 300 and 256). A
+  model that reasons before answering (seen with the `openrouter/free` fallback) used the whole
+  budget thinking and returned an empty answer with finish reason `length`. The answer is still cut
+  to 4000 characters and the prompt still asks for a few sentences.
+- **M7** (empty answers): when the model answers with nothing, the private log also names the
+  provider, the finish reason and the tokens generated (never any text), to tell a model that spent
+  its budget thinking from one that simply had nothing to say.
+- **M7** (documentation): the Kate example in the READMEs now uses a key of its own
+  (`kellu`, an absolute path and a list of highlighting modes: a key such as `python` replaces Kate's
+  built-in server) and says what was verified (hover and completion on Rust files in a real Kate);
+  HANDOFF records the design criteria and the plan for a Markdown grammar checker after 0.1.0.
 - **M6** (new work):
   - `kellu-frontends` (new crate): the terminal REPL, the Kate LSP server and the terminal theme.
     `kellu chat` (also plain `kellu` when run in a terminal) streams answers; `kellu lsp` serves

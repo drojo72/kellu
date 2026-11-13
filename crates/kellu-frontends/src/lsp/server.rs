@@ -1,7 +1,7 @@
 //! The LSP state machine. [`Server::handle`] is pure over its input (it returns the messages to
 //! send), so the whole protocol is testable without pipes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -19,6 +19,8 @@ use super::uri::{is_clean_absolute, path_from_uri};
 pub const MAX_DOCUMENTS: usize = 64;
 /// Largest document kept, in bytes. A bigger one is not tracked (and so never sent anywhere).
 pub const MAX_DOCUMENT_BYTES: usize = 2 * 1024 * 1024;
+/// Projects found from documents when the client's root was refused.
+const MAX_FOUND: usize = 8;
 /// Answers remembered.
 const CACHE_ENTRIES: usize = 128;
 
@@ -69,7 +71,12 @@ pub struct Server<'a> {
     home: PathBuf,
     state: State,
     scope: Option<Scope>,
+    /// Projects found from the documents themselves, used only when the client's root was refused
+    /// (Kate sends the home directory when it finds no project).
+    found: BTreeMap<PathBuf, Scope>,
     documents: BTreeMap<String, Document>,
+    /// Reasons already written to the log (each is written once, so a mouse pause cannot flood it).
+    reported: BTreeSet<String>,
     cache: BTreeMap<CacheKey, Option<Value>>,
 }
 
@@ -97,7 +104,9 @@ impl<'a> Server<'a> {
             home,
             state: State::Uninitialized,
             scope: None,
+            found: BTreeMap::new(),
             documents: BTreeMap::new(),
+            reported: BTreeSet::new(),
             cache: BTreeMap::new(),
         }
     }
@@ -208,6 +217,7 @@ impl<'a> Server<'a> {
     fn initialize(&mut self, id: &Value, params: &Value) -> Value {
         self.state = State::Running;
         self.scope = None;
+        self.found.clear();
         let root = params
             .get("rootUri")
             .and_then(Value::as_str)
@@ -228,7 +238,9 @@ impl<'a> Server<'a> {
         match root {
             Some(root) => match Scope::open(&root, &self.home, DenyGlobs::new(), false) {
                 Ok(scope) => self.scope = Some(scope),
-                Err(error) => log::warn!("lsp: project root refused: {error}"),
+                Err(error) => log::warn!(
+                    "lsp: project root refused: {error}; using the project of each document instead"
+                ),
             },
             None => log::warn!("lsp: no usable project root"),
         }
@@ -266,17 +278,46 @@ impl<'a> Server<'a> {
         )
     }
 
+    /// When the client's root was refused, look for the project a document lives in: the nearest
+    /// directory with a project marker, never the home directory or an ancestor of it (`Scope::open`
+    /// refuses those). A valid client root is never replaced, and at most `MAX_FOUND` are kept.
+    fn adopt_project(&mut self, uri: &str) {
+        if self.scope.is_some() || self.found.len() >= MAX_FOUND {
+            return;
+        }
+        let Some(parent) = path_from_uri(uri)
+            .as_deref()
+            .and_then(Path::parent)
+            .and_then(|dir| fs::canonicalize(dir).ok())
+        else {
+            return;
+        };
+        if self.found.keys().any(|root| parent.starts_with(root)) {
+            return;
+        }
+        for dir in parent.ancestors() {
+            if let Ok(scope) = Scope::open(dir, &self.home, DenyGlobs::new(), false) {
+                self.found.insert(scope.root().to_path_buf(), scope);
+                return;
+            }
+        }
+    }
+
     /// The path of `uri` relative to the project root if the document may be used, else `None`.
     ///
     /// Fails closed: no usable root, a path outside the root (also through a symlinked directory),
     /// a denied name, or a file that is itself a symlink or not a regular file all say no. A file
     /// that does not exist yet (an unsaved buffer) is allowed when its directory is.
     fn permitted(&self, uri: &str) -> Option<PathBuf> {
-        let scope = self.scope.as_ref()?;
         let path = path_from_uri(uri)?;
         let name = path.file_name()?;
         let parent = fs::canonicalize(path.parent()?).ok()?;
         let full = parent.join(name);
+        let scope = self
+            .scope
+            .iter()
+            .chain(self.found.values())
+            .find(|scope| full.starts_with(scope.root()))?;
         let relative = full.strip_prefix(scope.root()).ok()?.to_path_buf();
         if relative.as_os_str().is_empty() || scope.is_denied(&relative) {
             return None;
@@ -294,6 +335,7 @@ impl<'a> Server<'a> {
     fn store(&mut self, uri: &str, text: &str, version: i64, language: Option<&str>) {
         let fits = text.len() <= MAX_DOCUMENT_BYTES
             && (self.documents.contains_key(uri) || self.documents.len() < MAX_DOCUMENTS);
+        self.adopt_project(uri);
         // Denied or oversized documents are not kept at all, and an older copy is dropped.
         if !fits || self.permitted(uri).is_none() {
             self.documents.remove(uri);
@@ -360,19 +402,41 @@ impl<'a> Server<'a> {
     }
 
     /// The document, its byte offset and the identifier, for a position request that is allowed.
-    fn target(&self, params: &Value) -> Option<(&Document, String, usize)> {
+    ///
+    /// The error says why not, for the private log: an editor sees only an empty answer.
+    fn target(&self, params: &Value) -> Result<(&Document, String, usize), String> {
         let uri = params
             .pointer("/textDocument/uri")
-            .and_then(Value::as_str)?;
-        let line = params.pointer("/position/line").and_then(Value::as_u64)?;
+            .and_then(Value::as_str)
+            .ok_or("the request has no document uri")?;
+        let line = params
+            .pointer("/position/line")
+            .and_then(Value::as_u64)
+            .ok_or("the request has no valid position")?;
         let character = params
             .pointer("/position/character")
-            .and_then(Value::as_u64)?;
+            .and_then(Value::as_u64)
+            .ok_or("the request has no valid position")?;
         // The document is checked again now: the file may have been replaced by a link since.
-        self.permitted(uri)?;
-        let document = self.documents.get(uri)?;
-        let offset = offset_at(&document.text, line, character)?;
-        Some((document, uri.to_owned(), offset))
+        if self.permitted(uri).is_none() {
+            return Err(format!(
+                "{uri} was refused: it is outside the project, denied, a symlink, or in no project \
+                 (a directory with .git, Cargo.toml, ... below the home directory)"
+            ));
+        }
+        let document = self.documents.get(uri).ok_or_else(|| {
+            format!("{uri} is not open or was not kept (too large, or too many open)")
+        })?;
+        let offset = offset_at(&document.text, line, character)
+            .ok_or_else(|| format!("the position is past the end of {uri}"))?;
+        Ok((document, uri.to_owned(), offset))
+    }
+
+    /// Write `reason` to the private log once.
+    fn report(&mut self, reason: String) {
+        if self.reported.len() < 256 && self.reported.insert(reason.clone()) {
+            log::warn!("lsp: {reason}");
+        }
     }
 
     fn remember(&mut self, key: CacheKey, value: Option<Value>) {
@@ -383,14 +447,18 @@ impl<'a> Server<'a> {
     }
 
     fn hover(&mut self, params: &Value) -> Value {
-        let Some((document, uri, offset)) = self.target(params) else {
-            return Value::Null;
+        let (document, uri, offset) = match self.target(params) {
+            Ok(found) => found,
+            Err(reason) => {
+                self.report(format!("hover: {reason}"));
+                return Value::Null;
+            }
         };
         let (start, end) = word_at(&document.text, offset);
         if start == end {
             return Value::Null;
         }
-        let key: CacheKey = ("hover", uri, document.version, start);
+        let key: CacheKey = ("hover", uri.clone(), document.version, start);
         if let Some(cached) = self.cache.get(&key) {
             return cached.clone().unwrap_or(Value::Null);
         }
@@ -413,12 +481,17 @@ impl<'a> Server<'a> {
                     },
                 }))
             }
-            Ok(_) => None,
+            Ok(_) => {
+                self.report(format!(
+                    "hover: the model returned an empty answer for {uri}"
+                ));
+                None
+            }
             Err(error) => {
-                log::warn!(
-                    "lsp: hover failed: {}",
+                self.report(format!(
+                    "hover: the model request failed: {}",
                     strip_control_chars(&error.to_string())
-                );
+                ));
                 return Value::Null;
             }
         };
@@ -428,10 +501,14 @@ impl<'a> Server<'a> {
 
     fn completion(&mut self, params: &Value) -> Value {
         let empty = || json!({"isIncomplete": false, "items": []});
-        let Some((document, uri, offset)) = self.target(params) else {
-            return empty();
+        let (document, uri, offset) = match self.target(params) {
+            Ok(found) => found,
+            Err(reason) => {
+                self.report(format!("completion: {reason}"));
+                return empty();
+            }
         };
-        let key: CacheKey = ("completion", uri, document.version, offset);
+        let key: CacheKey = ("completion", uri.clone(), document.version, offset);
         if let Some(cached) = self.cache.get(&key) {
             return cached.clone().unwrap_or_else(empty);
         }
@@ -471,12 +548,17 @@ impl<'a> Server<'a> {
                 }
                 Some(json!({"isIncomplete": false, "items": [item]}))
             }
-            Ok(_) => None,
+            Ok(_) => {
+                self.report(format!(
+                    "completion: the model returned an empty answer for {uri}"
+                ));
+                None
+            }
             Err(error) => {
-                log::warn!(
-                    "lsp: completion failed: {}",
+                self.report(format!(
+                    "completion: the model request failed: {}",
                     strip_control_chars(&error.to_string())
-                );
+                ));
                 return empty();
             }
         };
