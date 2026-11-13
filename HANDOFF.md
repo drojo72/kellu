@@ -91,7 +91,7 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | Workspace | `crates/`: `kellu-common`, `kellu-security`, `kellu-sandbox`, `kellu-providers`, `kellu-projects`, `kellu-tools`, `kellu-core`, `kellu-frontends`, más el binario `kellu`. Dirección: `frontends -> core -> tools -> sandbox -> security -> common`; `providers` y `projects` también bajo `core`. Un crate se crea cuando empieza su hito; un test sobre `cargo metadata` lo exige. Ver la arista `sandbox -> security` en la sección 9.5. |
 | Configuración | TOML en `~/.config/kellu/config.toml` sobre `defaults.toml` embebido (`include_str!`). Sin secretos, https obligatorio (http solo localhost), claves desconocidas son error, archivo propio y sin escritura de grupo u otros, máximo 256 KiB. |
 | Keyring | Atributo `kellu=<servicio>_<clave>` y etiqueta `KELLU: <nombre>` (mismo formato que el prototipo, que usaba el atributo `kai`). Niveles deducidos del nombre: `ai_` es `provider`; `github_`, `cloudflare_`, `render_`, `desec_`, `duckdns_` son `infra`; `neon_`, `supabase_`, `mysql_` son `db`; desconocido cae en `infra`. `keyring_name = "x"` resuelve a `ai_x_api_key`. **Decidido en M3:** alta, lectura y baja con `secret-tool` (sin dependencia nueva, compatible con las entradas existentes); **listado por D-Bus con `busctl`** (`SearchItems` con filtro vacío y la propiedad `Attributes` de cada ítem), que nunca pide un valor. `secret-tool search` no sirve para listar (ver sección 9.3). Sin `busctl`, `kellu keys list` y `cleanup-legacy` fallan con un mensaje claro y todo lo demás funciona. |
-| Proveedores por defecto | openrouter, deepseek (compatibles con OpenAI); google (`gemini-flash-latest`, alias móvil); gemma_direct (`gemma-4-26b-a4b-it`, clave y cuota propias); grok (`grok-4.3`, base `https://api.x.ai/v1`); groq (`llama-3.1-8b-instant`; `llama-3.3-70b-versatile` fue retirado y daba 404, base `https://api.groq.com/openai/v1`, para probar el ingreso de claves). Google usa `v1beta`. Rutas: general = gemma_direct, groq, openrouter (provisional, para pruebas); code = gemma_direct, openrouter; explain = gemma_direct, openrouter (antes deepseek y google; fallaban por saldo y demanda y cada hover pagaba el fallo del primario). Presupuesto total del router: 120 s. |
+| Proveedores por defecto | openrouter, deepseek (compatibles con OpenAI); google (`gemini-flash-latest`, alias móvil); gemma_direct (`gemma-4-26b-a4b-it`, clave y cuota propias); grok (`grok-4.3`, base `https://api.x.ai/v1`); groq (`llama-3.1-8b-instant`; `llama-3.3-70b-versatile` daba 404 y el nuevo id da el mismo 404 en la cuenta del usuario: probable falta de acceso al modelo en su cuenta, sin resolver, base `https://api.groq.com/openai/v1`, para probar el ingreso de claves). Google usa `v1beta`. Rutas: general = gemma_direct, groq, openrouter (provisional, para pruebas); code = gemma_direct, openrouter; explain = gemma_direct, openrouter (antes deepseek y google; fallaban por saldo y demanda y cada hover pagaba el fallo del primario). Presupuesto total del router: 120 s. |
 | HTTP | **`ureq` 3.5 con `rustls`** (decidido y verificado en M2): cero redirecciones (`max_redirects(0)` devuelve el 3xx sin seguirlo), timeouts por operación y global, streaming incremental, tope de cuerpo también con `chunked`, y recibe `http::Request`, así que la URL la parsea nuestro `http::Uri`. Proveedor criptográfico `ring` (no es Rust puro: C y ensamblador). Raíces de certificados: **Mozilla incluidas** (`webpki-roots`), no el almacén del sistema: una CA privada o un proxy que intercepta TLS no son de confianza (revisar con `platform-verifier` si hace falta). Los endpoints https respetan `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`/`NO_PROXY` del entorno (el proxy solo ve un túnel `CONNECT`); los endpoints `http` (solo localhost) **nunca** usan proxy: `ureq` no exime a localhost por sí mismo y un proxy vería la clave en claro (hallazgo de la revisión independiente; prueba `proxy::plain_http_ignores_the_proxy_environment`). |
 | Sandbox | bubblewrap con `argv` como lista, sin shell. Política de versión **B**: se permiten versiones anteriores a 0.12.0 con advertencia (CVE-2026-87766), porque el diseño nunca crea puntos de montaje dentro del árbol del proyecto; modo estricto opcional. Ubuntu 24.04 trae 0.9.0 y su paquete retiró el parche en una actualización. Landlock (crate `landlock`) como respaldo posterior. **Decidido en M4:** siempre una **copia de trabajo** de los archivos del `Grant` montada en `/work` (nunca el proyecto real, ni en solo lectura); `--unshare-user` explícito (sin él un bwrap setuid podría correr sin namespace de usuario) más `--disable-userns`; límites con `prlimit` **dentro** del sandbox, alrededor del comando (ver sección 9.2); sin límites disponibles el comando se rechaza; versión ilegible o aislamiento que falla: no abre. |
 | Autorización | Lectura por proyecto (solo lectura). Escritura nunca permanente: el modelo propone diffs con hashes, el usuario elige denegar, parcial o completo, y **solo el núcleo aplica**. Ningún sandbox escribe en el proyecto real; las herramientas que escriben trabajan sobre una copia (staging) y su resultado vuelve como otra propuesta. Un solo `Grant` deriva la política de rutas y los montajes (prueba con `proptest`). Auditoría JSONL append-only (0600) con cadena de hashes. Acceso a archivos por descriptores (`cap-std` o `rustix openat2`). |
@@ -115,6 +115,14 @@ adaptadores, así que es una segunda referencia para M2 y M3.
 
 ### 3.1 Criterios de diseño y plan después de 0.1.0 (dichos por el usuario, 2026-11-13)
 
+0. **Menos tokens y IA opcional (post-0.1.0):** bajar el consumo de tokens cuando haya datos
+   locales (índice del proyecto, respuestas sin modelo cuando basten) y añadir un selector para
+   usar IA o no (por servidor LSP y por tipo de archivo). Hoy hover/completion piden hasta 1024
+   tokens porque los modelos que razonan agotaban 300 y devolvían vacío.
+0b. **Selector de modelos con el catálogo real de cada servicio (post-0.1.0):** listar los modelos
+   que cada proveedor ofrece de verdad a la cuenta del usuario (por su API de modelos), elegir el
+   modelo de cada ruta desde ahí y activar o desactivar proveedores y modelos concretos. Evita ids
+   inventados o sin acceso (caso `groq`) y avisa de los de pago.
 1. **Ligero en memoria:** sin JVM residente ni procesos cargados sin necesidad.
 2. **Sin atarse a bibliotecas de KDE**, salvo las que ya vienen en el paquete de Kate. LSP y CLI son
    el acoplamiento más débil con Kate (solo entrada y salida estándar); un plugin de KDE, el más fuerte.
@@ -139,6 +147,15 @@ adaptadores, así que es una segunda referencia para M2 y M3.
    Markdown** (vallas con su lenguaje, front matter, código en línea, mermaid) y cómo decidir el
    idioma por archivo, sección o bloque; si Kate admite varios servidores por documento (el usuario
    lo probará; condición previa para convivir con LTeX+).
+
+**Propuesta de ruta a 1.0 (2026-11-13, sin confirmar): ver `docs/ROADMAP.md`.** Orden propuesto:
+0.2.0 Control (catálogo real de modelos, activar/desactivar proveedores y modelos, parámetros por
+proveedor, memoria de salud del router, interruptor de IA, LSP con hilo de trabajo y cancelación),
+0.3.0 Local (caché exacta, índice de símbolos del proyecto, predicción local, etapas 1 y 2 de la
+cascada; sin base de datos al inicio), 0.4.0 Prosa (diagnósticos LSP, regiones Markdown,
+LanguageTool), 0.5.0 agente, 0.6.0 memoria, 0.7.0 gateway y ACP, 0.8.0 runtimes locales y MCP,
+0.9.0 endurecimiento y empaquetado, 1.0.0 con criterios de estabilidad. README, ARCHITECTURE y
+SECURITY conservan la numeración anterior hasta que el usuario confirme.
 
 Después: 0.2.0 agente (loop con herramientas, diagnósticos y code actions); 0.3.0 gateway
 compatible con OpenAI y ACP; 0.4.0 memoria (SQLite, pgvector opcional); 0.5.0 runtimes locales,
