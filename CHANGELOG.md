@@ -63,6 +63,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 - **M7** (LSP diagnostics): when hover or completion return nothing, the server now writes the
   reason once per cause to the private log (`lsp: hover: ...`): document refused (and why), empty
   model answer, or failed model request. Only paths and reasons are logged, never document text.
+- **M7** (token budget): hover and completion request up to 1024 tokens (were 300 and 256). A
+  model that reasons before answering (seen with the `openrouter/free` fallback) used the whole
+  budget thinking and returned an empty answer with finish reason `length`. The answer is still cut
+  to 4000 characters and the prompt still asks for a few sentences.
 - **M7** (empty answers): when the model answers with nothing, the private log also names the
   provider, the finish reason and the tokens generated (never any text), to tell a model that spent
   its budget thinking from one that simply had nothing to say.

@@ -40,8 +40,8 @@ impl Default for Limits {
             after: 2000,
             focus: 200,
             answer: 4000,
-            hover_tokens: 300,
-            completion_tokens: 256,
+            hover_tokens: 1024,
+            completion_tokens: 1024,
             history: 24_000,
         }
     }
