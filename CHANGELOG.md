@@ -54,6 +54,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   project it lives in (the nearest directory with a marker such as `.git`, never the home directory
   or an ancestor). A valid root from the client is never widened. Before this, hover and completion
   returned nothing in that case and the only trace was a line in the private log.
+- **M7** (LSP diagnostics): when hover or completion return nothing, the server now writes the
+  reason once per cause to the private log (`lsp: hover: ...`): document refused (and why), empty
+  model answer, or failed model request. Only paths and reasons are logged, never document text.
 - **M7** (documentation): the Kate example in the READMEs now uses a key of its own
   (`kellu`, an absolute path and a list of highlighting modes: a key such as `python` replaces Kate's
   built-in server) and says what was verified (hover and completion on Rust files in a real Kate);

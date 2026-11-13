@@ -305,6 +305,11 @@ decía. Ahora, si la raíz del cliente se rechaza, cada documento usa su propio 
 más cercano con marcador, nunca el home ni sus ancestros; máximo 8) y una raíz válida nunca se
 amplía. El proceso `kellu lsp` ocupó unos 4 MB (RSS) en el equipo del usuario.
 
+**Diagnóstico (2026-11-13, rama `m7-lsp-diagnostics`):** tras ese arreglo el hover seguía sin aparecer
+y el log no mostraba causa. Ahora hover/completion registran una vez por motivo por qué no devuelven
+nada (documento rechazado, respuesta vacía del modelo, fallo de la petición), sin texto del documento.
+Pendiente del usuario: reinstalar, reintentar y enviar las líneas `lsp:` del log.
+
 **No verificado:** con un Kate real, los demás modos de la lista (Markdown, YAML, etc.), varios
 servidores activos por documento (el usuario lo probará), con qué frecuencia pide Kate hover y
 completion y si `.kateproject` puede sobrescribir el comando. Con un proveedor real tampoco: solo un servidor

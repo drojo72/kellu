@@ -1,7 +1,7 @@
 //! The LSP state machine. [`Server::handle`] is pure over its input (it returns the messages to
 //! send), so the whole protocol is testable without pipes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -75,6 +75,8 @@ pub struct Server<'a> {
     /// (Kate sends the home directory when it finds no project).
     found: BTreeMap<PathBuf, Scope>,
     documents: BTreeMap<String, Document>,
+    /// Reasons already written to the log (each is written once, so a mouse pause cannot flood it).
+    reported: BTreeSet<String>,
     cache: BTreeMap<CacheKey, Option<Value>>,
 }
 
@@ -104,6 +106,7 @@ impl<'a> Server<'a> {
             scope: None,
             found: BTreeMap::new(),
             documents: BTreeMap::new(),
+            reported: BTreeSet::new(),
             cache: BTreeMap::new(),
         }
     }
@@ -399,19 +402,41 @@ impl<'a> Server<'a> {
     }
 
     /// The document, its byte offset and the identifier, for a position request that is allowed.
-    fn target(&self, params: &Value) -> Option<(&Document, String, usize)> {
+    ///
+    /// The error says why not, for the private log: an editor sees only an empty answer.
+    fn target(&self, params: &Value) -> Result<(&Document, String, usize), String> {
         let uri = params
             .pointer("/textDocument/uri")
-            .and_then(Value::as_str)?;
-        let line = params.pointer("/position/line").and_then(Value::as_u64)?;
+            .and_then(Value::as_str)
+            .ok_or("the request has no document uri")?;
+        let line = params
+            .pointer("/position/line")
+            .and_then(Value::as_u64)
+            .ok_or("the request has no valid position")?;
         let character = params
             .pointer("/position/character")
-            .and_then(Value::as_u64)?;
+            .and_then(Value::as_u64)
+            .ok_or("the request has no valid position")?;
         // The document is checked again now: the file may have been replaced by a link since.
-        self.permitted(uri)?;
-        let document = self.documents.get(uri)?;
-        let offset = offset_at(&document.text, line, character)?;
-        Some((document, uri.to_owned(), offset))
+        if self.permitted(uri).is_none() {
+            return Err(format!(
+                "{uri} was refused: it is outside the project, denied, a symlink, or in no project \
+                 (a directory with .git, Cargo.toml, ... below the home directory)"
+            ));
+        }
+        let document = self.documents.get(uri).ok_or_else(|| {
+            format!("{uri} is not open or was not kept (too large, or too many open)")
+        })?;
+        let offset = offset_at(&document.text, line, character)
+            .ok_or_else(|| format!("the position is past the end of {uri}"))?;
+        Ok((document, uri.to_owned(), offset))
+    }
+
+    /// Write `reason` to the private log once.
+    fn report(&mut self, reason: String) {
+        if self.reported.len() < 256 && self.reported.insert(reason.clone()) {
+            log::warn!("lsp: {reason}");
+        }
     }
 
     fn remember(&mut self, key: CacheKey, value: Option<Value>) {
@@ -422,14 +447,18 @@ impl<'a> Server<'a> {
     }
 
     fn hover(&mut self, params: &Value) -> Value {
-        let Some((document, uri, offset)) = self.target(params) else {
-            return Value::Null;
+        let (document, uri, offset) = match self.target(params) {
+            Ok(found) => found,
+            Err(reason) => {
+                self.report(format!("hover: {reason}"));
+                return Value::Null;
+            }
         };
         let (start, end) = word_at(&document.text, offset);
         if start == end {
             return Value::Null;
         }
-        let key: CacheKey = ("hover", uri, document.version, start);
+        let key: CacheKey = ("hover", uri.clone(), document.version, start);
         if let Some(cached) = self.cache.get(&key) {
             return cached.clone().unwrap_or(Value::Null);
         }
@@ -452,12 +481,17 @@ impl<'a> Server<'a> {
                     },
                 }))
             }
-            Ok(_) => None,
+            Ok(_) => {
+                self.report(format!(
+                    "hover: the model returned an empty answer for {uri}"
+                ));
+                None
+            }
             Err(error) => {
-                log::warn!(
-                    "lsp: hover failed: {}",
+                self.report(format!(
+                    "hover: the model request failed: {}",
                     strip_control_chars(&error.to_string())
-                );
+                ));
                 return Value::Null;
             }
         };
@@ -467,10 +501,14 @@ impl<'a> Server<'a> {
 
     fn completion(&mut self, params: &Value) -> Value {
         let empty = || json!({"isIncomplete": false, "items": []});
-        let Some((document, uri, offset)) = self.target(params) else {
-            return empty();
+        let (document, uri, offset) = match self.target(params) {
+            Ok(found) => found,
+            Err(reason) => {
+                self.report(format!("completion: {reason}"));
+                return empty();
+            }
         };
-        let key: CacheKey = ("completion", uri, document.version, offset);
+        let key: CacheKey = ("completion", uri.clone(), document.version, offset);
         if let Some(cached) = self.cache.get(&key) {
             return cached.clone().unwrap_or_else(empty);
         }
@@ -510,12 +548,17 @@ impl<'a> Server<'a> {
                 }
                 Some(json!({"isIncomplete": false, "items": [item]}))
             }
-            Ok(_) => None,
+            Ok(_) => {
+                self.report(format!(
+                    "completion: the model returned an empty answer for {uri}"
+                ));
+                None
+            }
             Err(error) => {
-                log::warn!(
-                    "lsp: completion failed: {}",
+                self.report(format!(
+                    "completion: the model request failed: {}",
                     strip_control_chars(&error.to_string())
-                );
+                ));
                 return empty();
             }
         };
