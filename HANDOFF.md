@@ -109,9 +109,36 @@ delgados (terminal, LSP; luego gateway, ACP y MCP). Desarrollo por hitos, seguri
 | M4 | Hecho | **Hecho** (sus bloques los consume M5, ver sección 9.1). Crate `kellu-sandbox`: política derivada del `Grant`, copia de trabajo, bubblewrap con `argv`, límites de recursos con `prlimit`, tiempo máximo y tope de salida; sondeo de bubblewrap, `prlimit` y `openat2` en `doctor`; `[sandbox] require_patched_bwrap`; tests de escape contra bubblewrap real |
 | M5 | No empezado | **Hecho.** Registro de herramientas con riesgo obligatorio, propuesta y aplicación de diffs, archivos, shell en sandbox, git de lectura; escrituras de git y gh en el host con confirmación (ver sección 9) |
 | M6 | No empezado | **Hecho.** REPL (`kellu chat`), LSP (hover y completion, opt-in) y tema de terminal; ver sección 9 |
-| M7 | No empezado | Documentación y etiqueta 0.1.0 |
+| M7 | No empezado | Documentación y etiqueta 0.1.0 (rama `m7-release`; la etiqueta se crea cuando el usuario lo confirme) |
 El prototipo Ruby avanzó en paralelo en keyring (altas, bajas, lectura y listado), configuración y
 adaptadores, así que es una segunda referencia para M2 y M3.
+
+### 3.1 Criterios de diseño y plan después de 0.1.0 (dichos por el usuario, 2026-11-13)
+
+1. **Ligero en memoria:** sin JVM residente ni procesos cargados sin necesidad.
+2. **Sin atarse a bibliotecas de KDE**, salvo las que ya vienen en el paquete de Kate. LSP y CLI son
+   el acoplamiento más débil con Kate (solo entrada y salida estándar); un plugin de KDE, el más fuerte.
+3. **Soluciones propias en Rust si hacen falta;** en C solo tras analizarlo y como proceso aparte
+   dentro del sandbox, nunca enlazado al workspace (`#![forbid(unsafe_code)]`).
+4. **Corrector gramatical para Markdown (0.2.0 o después).** El usuario escribe en español, inglés y
+   alemán, y algunos proyectos en francés, italiano, hebreo, griego y latín. Hechos verificados el
+   2026-11-13: LanguageTool 6.6 cubre es, en, de, fr (reglas abundantes), it y el (pocas reglas, poca
+   actividad) y **no** he ni la; LTeX+ (`ltex-ls-plus`) es un servidor LSP con Markdown que trae su
+   propio Java y puede apuntar a un servidor remoto (`languageToolHttpServerUri`); la API pública
+   permite 20 peticiones por minuto y 20 KB por petición y **prohíbe el uso automático** (hay que usar
+   una instancia propia o Enterprise); Harper (`harper-ls`, Rust) solo documenta inglés; `nlprule`
+   (Rust) cubre en, de y es (experimental) con reglas de LanguageTool 5.2 y sin mantenimiento
+   confirmado. Plan: (a) en 0.2.0 probar que LanguageTool funciona con Kate y **medir su memoria**
+   (RSS) con un `.md` normal; (b) es/en/de/fr con LanguageTool (servidor propio o nube premium, vía
+   HTTPS sin Java local); it/el con el modelo como segunda opinión; he/la con el corrector de Kate y
+   una acción de código del modelo; (c) solución propia en Rust solo si hace falta y salvo que
+   LanguageTool publique una versión ligera sin Java (comprobarlo entonces; hoy no existe).
+5. **Decisiones abiertas de ese trabajo:** dónde guardar la clave premium (`keyring_name` solo admite
+   `ai_*`: haría falta otro nivel); qué se envía (deny globs y redacción que **conserve las
+   posiciones**); cuándo se llama (nunca al teclear con la API pública); el módulo de **regiones
+   Markdown** (vallas con su lenguaje, front matter, código en línea, mermaid) y cómo decidir el
+   idioma por archivo, sección o bloque; si Kate admite varios servidores por documento (el usuario
+   lo probará; condición previa para convivir con LTeX+).
 
 Después: 0.2.0 agente (loop con herramientas, diagnósticos y code actions); 0.3.0 gateway
 compatible con OpenAI y ACP; 0.4.0 memoria (SQLite, pgvector opcional); 0.5.0 runtimes locales,
@@ -267,9 +294,14 @@ ejemplo ni el contenido de `.env` aparecen en lo enviado.
 5. El REPL no muestra aún propuestas ni pide confirmaciones (llegan con el bucle de agente).
 6. Un `Approver` y las confirmaciones de M5 siguen sin probarse con personas.
 
-**No verificado:** con un Kate real nada (arranque del servidor, el JSON de `servers`, si el
-completado se filtra y muestra con `filterText`, con qué frecuencia pide Kate hover y completion, y
-si `.kateproject` puede sobrescribir el comando). Con un proveedor real tampoco: solo un servidor
+**Probado después por el usuario en un Kate real (2026-11-13):** hover y completado funcionan con
+archivos `.rs` dentro de un repo con `.git`. Un archivo Python no activó Kellu porque la entrada era
+solo para Rust (Kate arrancó `pylsp`); la clave `python` del ejemplo anterior del README habría
+reemplazado `pylsp`, por eso el ejemplo ahora usa la clave `kellu`.
+
+**No verificado:** con un Kate real, los demás modos de la lista (Markdown, YAML, etc.), varios
+servidores activos por documento (el usuario lo probará), con qué frecuencia pide Kate hover y
+completion y si `.kateproject` puede sobrescribir el comando. Con un proveedor real tampoco: solo un servidor
 HTTP local falso. El REPL no se probó en una terminal interactiva real (tema de color, Ctrl-C,
 Ctrl-D, pegado largo); sí con flujos en memoria y como proceso con tuberías. La prueba de "otro
 usuario" de M5 sigue corriendo solo como root.

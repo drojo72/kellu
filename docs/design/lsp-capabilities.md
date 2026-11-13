@@ -80,9 +80,11 @@ from or settles the notes above:
 - **Limits:** the server is single-threaded and a model call blocks it until the provider answers
   or fails (the router budget applies); `$/cancelRequest` is ignored. Errors become an empty result
   and a line in the private log, never a message to Kate.
-- **To verify on a real Kate:** that completion items show and filter as intended with the
-  `filterText` rule, how often Kate calls hover and completion in practice, and the exact
-  `servers` JSON for your version.
+- **Verified on a real Kate (2026-11-13):** hover and completion work on Rust files in a project with
+  a `.git` directory, with a `servers` entry of its own and an absolute command path.
+- **Still to verify:** the other highlighting modes, Kellu next to another server on the same
+  document, how often Kate calls hover and completion in practice, and whether `.kateproject` can
+  override the server command.
 
 ## Trust notes
 

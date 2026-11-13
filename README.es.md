@@ -171,13 +171,17 @@ En Kate: *Preferencias → Configurar Kate → Cliente LSP → Configuración de
 ```json
 {
   "servers": {
-    "python": {
-      "command": ["kellu", "lsp"],
-      "highlightingModeRegex": "^Python$"
+    "kellu": {
+      "command": ["/home/TU_USUARIO/.cargo/bin/kellu", "lsp"],
+      "highlightingModeRegex": "^(Rust|Python|Markdown|YAML|JSON|TOML|Bash|C|C\\+\\+|JavaScript|TypeScript)$"
     }
   }
 }
 ```
+
+Usa la ruta absoluta: un Kate lanzado desde el menú suele no tener `~/.cargo/bin` en el `PATH`. Kate elige el servidor por el *modo de resaltado* del documento: lista los que quieras y no uses `.*`, que enviaría a un proveedor cualquier tipo de archivo. La clave `kellu` es un nombre propio: una clave como `python` o `rust` *reemplazaría* el servidor que Kate trae para ese lenguaje. Reinicia Kate (o el servidor) después de editar esto o `config.toml`.
+
+Verificado en un Kate real: hover y completado en archivos Rust. Los demás modos de la lista usan el mismo mecanismo pero no se han probado, y tampoco se ha verificado si Kate puede ejecutar Kellu junto a otro servidor sobre el mismo documento (por ejemplo `rust-analyzer`).
 
 Hover y completado vienen **desactivados**: Kate los pide por su cuenta (una pausa del ratón, un identificador tecleado) y cada uno envía código alrededor del cursor a tu proveedor (redactado, nunca de archivos denegados ni de fuera del proyecto). Actívalos en `config.toml`:
 
