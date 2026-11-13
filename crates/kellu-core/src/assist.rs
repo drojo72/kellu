@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use kellu_common::KelluError;
 use kellu_common::text::{Redactor, strip_control_chars, truncate};
-use kellu_providers::types::{ChatRequest, Message};
+use kellu_providers::types::{ChatRequest, ChatResponse, Message};
 
 use crate::router::{Router, RouterStream, TaskKind};
 
@@ -111,7 +111,9 @@ impl Assistant {
         );
         let request = self.request(prompt, self.limits.hover_tokens, 0.2)?;
         let response = self.router.chat(TaskKind::Explain, &request)?;
-        Ok(self.clean_answer(&response.text))
+        let answer = self.clean_answer(&response.text);
+        note_if_empty("explain", &answer, &response);
+        Ok(answer)
     }
 
     /// Code to insert at the cursor (possibly several lines); empty if the model had nothing.
@@ -127,7 +129,9 @@ impl Assistant {
         );
         let request = self.request(prompt, self.limits.completion_tokens, 0.0)?;
         let response = self.router.chat(TaskKind::Code, &request)?;
-        Ok(strip_fence(&self.clean_answer(&response.text)))
+        let answer = strip_fence(&self.clean_answer(&response.text));
+        note_if_empty("complete", &answer, &response);
+        Ok(answer)
     }
 
     /// Stream the answer to a conversation. The most recent messages that fit the history limit
@@ -208,6 +212,31 @@ impl Assistant {
         let limit = NonZeroUsize::new(self.limits.answer).unwrap_or(NonZeroUsize::MIN);
         truncate(cleaned.trim_matches(['\n', '\r']), limit)
     }
+}
+
+/// An empty answer is usually a model that spent its token budget thinking: say which provider
+/// answered and why it stopped (never any text) so the private log can tell.
+fn note_if_empty(task: &str, answer: &str, response: &ChatResponse) {
+    if !answer.trim().is_empty() {
+        return;
+    }
+    let short = |text: &str| {
+        let limit = NonZeroUsize::new(40).unwrap_or(NonZeroUsize::MIN);
+        truncate(&strip_control_chars(text), limit)
+    };
+    let finish = response
+        .finish_reason
+        .as_deref()
+        .map_or_else(|| "unknown".to_owned(), short);
+    let generated = response
+        .usage
+        .as_ref()
+        .and_then(|u| u.completion_tokens)
+        .map_or_else(|| "unknown".to_owned(), |n| n.to_string());
+    log::warn!(
+        "assist: {task}: empty answer from provider {} (finish reason: {finish}, tokens generated: {generated})",
+        short(&response.provider)
+    );
 }
 
 fn message_chars(message: &Message) -> usize {

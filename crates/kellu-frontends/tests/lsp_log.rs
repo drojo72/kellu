@@ -103,6 +103,10 @@ fn every_silent_empty_answer_leaves_a_reason_once() {
         all.contains("completion: the model returned an empty answer"),
         "{all}"
     );
+    assert!(
+        all.contains("assist: explain: empty answer from provider a (finish reason: unknown"),
+        "{all}"
+    );
 
     // A model that fails.
     probe.fail.store(true, Ordering::SeqCst);
