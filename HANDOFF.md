@@ -299,6 +299,12 @@ archivos `.rs` dentro de un repo con `.git`. Un archivo Python no activó Kellu 
 solo para Rust (Kate arrancó `pylsp`); la clave `python` del ejemplo anterior del README habría
 reemplazado `pylsp`, por eso el ejemplo ahora usa la clave `kellu`.
 
+**Corrección posterior (2026-11-13):** hover dejó de aparecer porque Kate abrió Kellu con la raíz
+`/home/claudio` (su respaldo cuando no reconoce un proyecto) y `Scope` la rechaza; el log privado lo
+decía. Ahora, si la raíz del cliente se rechaza, cada documento usa su propio proyecto (el directorio
+más cercano con marcador, nunca el home ni sus ancestros; máximo 8) y una raíz válida nunca se
+amplía. El proceso `kellu lsp` ocupó unos 4 MB (RSS) en el equipo del usuario.
+
 **No verificado:** con un Kate real, los demás modos de la lista (Markdown, YAML, etc.), varios
 servidores activos por documento (el usuario lo probará), con qué frecuencia pide Kate hover y
 completion y si `.kateproject` puede sobrescribir el comando. Con un proveedor real tampoco: solo un servidor

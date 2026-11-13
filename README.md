@@ -191,7 +191,7 @@ hover = true
 completion = true
 ```
 
-The project root must be a project (a `.git` directory or similar) and not your home directory. Replies are synchronous, so a slow provider makes Kate wait.
+The file must live in a project (a `.git` directory, `Cargo.toml` or similar below your home directory); Kate sends your home directory as the root when it finds no project, and Kellu then looks for the project of each file. Replies are synchronous, so a slow provider makes Kate wait.
 
 In 0.1.0 Kellu’s LSP server provides **hover** and **completion**; diagnostics and quick-fix suggestions arrive with the agent work in 0.2.0. Chat, diff previews and ghost text need other frontends (see [docs/design/lsp-capabilities.md](docs/design/lsp-capabilities.md)). Check Kate’s LSP client documentation for the exact format on your version.
 
