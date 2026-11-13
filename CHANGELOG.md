@@ -21,8 +21,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 ### Changed
 - Packaged routes: `code` and `explain` now start with `gemma_direct` (the old primaries failed on
   balance or demand and made the first hover take seconds). Provider `groq` uses
-  `llama-3.1-8b-instant`: `llama-3.3-70b-versatile` was retired and answered 404 (id not yet
-  confirmed with a real call).
+  `llama-3.1-8b-instant` (`llama-3.3-70b-versatile` answered 404). The new id answers the same 404
+  on the maintainer's account, so the cause is probably account access to the model, not the id;
+  unresolved, to be settled with the real model catalog of the service.
 
 ### Added
 - Packaged provider `groq` (OpenAI-compatible, `llama-3.3-70b-versatile`); the `general` route is
