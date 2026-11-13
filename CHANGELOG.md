@@ -18,6 +18,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 
 ## [Unreleased]
 
+### Changed
+- Packaged routes: `code` and `explain` now start with `gemma_direct` (the old primaries failed on
+  balance or demand and made the first hover take seconds). Provider `groq` uses
+  `llama-3.1-8b-instant`: `llama-3.3-70b-versatile` was retired and answered 404 (id not yet
+  confirmed with a real call).
+
 ### Added
 - Packaged provider `groq` (OpenAI-compatible, `llama-3.3-70b-versatile`); the `general` route is
   now `gemma_direct` -> `groq` -> `openrouter` (provisional, for testing).

@@ -670,8 +670,8 @@ mod tests {
         let config = parse_config(&load_defaults().unwrap(), None, None).unwrap();
         let chain = |task: &str| config.route(task).chain().collect::<Vec<_>>();
         assert_eq!(chain("general"), ["gemma_direct", "groq", "openrouter"]);
-        assert_eq!(chain("code"), ["deepseek", "openrouter"]);
-        assert_eq!(chain("explain"), ["google", "openrouter"]);
+        assert_eq!(chain("code"), ["gemma_direct", "openrouter"]);
+        assert_eq!(chain("explain"), ["gemma_direct", "openrouter"]);
     }
 
     #[test]

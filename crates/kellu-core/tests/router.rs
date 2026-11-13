@@ -359,11 +359,11 @@ fn task_selects_its_own_chain() {
         h.router.chat(TaskKind::General, &request()).unwrap().text,
         "A"
     );
-    // `explain` keeps its packaged chain (google, openrouter), which this harness did not build.
+    // `explain` keeps its packaged chain (gemma_direct, openrouter), which this harness did not build.
     let h = harness(vec![spec("a"), spec("b"), spec("c")]);
     let list = failures(h.router.chat(TaskKind::Explain, &request()).unwrap_err());
     let names: Vec<_> = list.iter().map(|f| f.0.as_str()).collect();
-    assert_eq!(names, ["google", "openrouter"]);
+    assert_eq!(names, ["gemma_direct", "openrouter"]);
 }
 
 #[test]
