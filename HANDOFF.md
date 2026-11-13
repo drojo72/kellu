@@ -148,6 +148,15 @@ adaptadores, así que es una segunda referencia para M2 y M3.
    idioma por archivo, sección o bloque; si Kate admite varios servidores por documento (el usuario
    lo probará; condición previa para convivir con LTeX+).
 
+**Propuesta de ruta a 1.0 (2026-11-13, sin confirmar): ver `docs/ROADMAP.md`.** Orden propuesto:
+0.2.0 Control (catálogo real de modelos, activar/desactivar proveedores y modelos, parámetros por
+proveedor, memoria de salud del router, interruptor de IA, LSP con hilo de trabajo y cancelación),
+0.3.0 Local (caché exacta, índice de símbolos del proyecto, predicción local, etapas 1 y 2 de la
+cascada; sin base de datos al inicio), 0.4.0 Prosa (diagnósticos LSP, regiones Markdown,
+LanguageTool), 0.5.0 agente, 0.6.0 memoria, 0.7.0 gateway y ACP, 0.8.0 runtimes locales y MCP,
+0.9.0 endurecimiento y empaquetado, 1.0.0 con criterios de estabilidad. README, ARCHITECTURE y
+SECURITY conservan la numeración anterior hasta que el usuario confirme.
+
 Después: 0.2.0 agente (loop con herramientas, diagnósticos y code actions); 0.3.0 gateway
 compatible con OpenAI y ACP; 0.4.0 memoria (SQLite, pgvector opcional); 0.5.0 runtimes locales,
 perfiles de hardware y MCP.
