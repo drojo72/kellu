@@ -115,6 +115,10 @@ adaptadores, así que es una segunda referencia para M2 y M3.
 
 ### 3.1 Criterios de diseño y plan después de 0.1.0 (dichos por el usuario, 2026-11-13)
 
+0. **Menos tokens y IA opcional (post-0.1.0):** bajar el consumo de tokens cuando haya datos
+   locales (índice del proyecto, respuestas sin modelo cuando basten) y añadir un selector para
+   usar IA o no (por servidor LSP y por tipo de archivo). Hoy hover/completion piden hasta 1024
+   tokens porque los modelos que razonan agotaban 300 y devolvían vacío.
 1. **Ligero en memoria:** sin JVM residente ni procesos cargados sin necesidad.
 2. **Sin atarse a bibliotecas de KDE**, salvo las que ya vienen en el paquete de Kate. LSP y CLI son
    el acoplamiento más débil con Kate (solo entrada y salida estándar); un plugin de KDE, el más fuerte.
