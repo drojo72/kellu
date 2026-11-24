@@ -39,6 +39,16 @@ What the first real-world tests showed, and the plan below fixes:
 
 The most valuable step after 0.1.0, because it is what hurt in real use.
 
+**Guiding rule: a token spent is the last resort.** A request reaches a model only after everything
+cheaper has had its chance: the AI switch (off means nothing is sent), the exact-match cache,
+the budget planner (which may refuse), and only then the router, whose chain starts with the
+cheapest suitable provider. To keep 0.2.0 small, the work is split in a core and a tail (0.2.x).
+
+**0.2.0 core:** model catalog, enable and disable, provider parameters, router health, AI switch,
+LSP robustness, exact-match cache, budget planner, usage ledger with caps, `kellu usage`, prompt
+presets. **0.2.x tail (only if the core proves stable):** `kellu bench`, the `fastest` and
+`quality` policies, the golden set.
+
 - **Model catalog.** `kellu models refresh [provider]` asks each service for the models the
   account can really use (`GET /models` for OpenAI-compatible services, the model list of Google),
   and caches the result under `~/.cache/kellu/`. Never at startup or build (no effects at start);
@@ -86,14 +96,15 @@ per token, per language: Spanish and German cost more than English) and **calibr
 model from the `usage` each response reports. The estimate only plans; the service's own count is
 what the ledger records.
 
-**4. Ledger and policy.** A local usage ledger (provider, model, task, prompt and answer tokens,
-latency, outcome, estimated cost; never any text; mode 0600; rotated) feeds `kellu usage` (by day,
+**4. Ledger and policy** (core: `cheapest` and `balanced`; the rest in the tail). A local usage ledger (provider, model, task, prompt and answer tokens,
+latency, outcome, estimated cost; never any text; mode 0600; rotated; the cost is shown in each service's own unit, for people to
+read, with no currency conversion) feeds `kellu usage` (by day,
 provider, model, route). Per route, a **policy** picks the order of the chain: `cheapest`,
 `fastest`, `balanced` or `quality`, with limits: maximum cost per request, daily and monthly caps,
 and what happens at the cap (fall to a cheaper model, fall to local only, or stop). Paid models are
 shown as paid and never used for a route unless allowed.
 
-**5. Calibration command, explicit and capped.** `kellu bench <provider/model>` measures, with a
+**5. Calibration command, explicit and capped (0.2.x tail).** `kellu bench <provider/model>` measures, with a
 token cap you confirm before it runs: latency and tokens per second, and the **effective
 context** with a needle-in-context test at growing prompt sizes (the first size where recall drops
 is the safe limit; Kellu stores it in the profile). The user may add a small golden set of their own
@@ -111,11 +122,11 @@ What this cannot do: no number guarantees the absence of fabricated answers. The
 lowers the risk, the planner refuses what does not fit, and the answers keep their "not verified"
 nature; correctness still needs the user's review and, in 0.5.0, tests.
 
-### 0.3.0 Local (cache, project index, rules)
+### 0.3.0 Local (project index, prediction, rules)
 
 Goal: fewer tokens and faster hover without changing the trust model.
 
-1. **Exact-match cache.** Key: hash of the redacted window, task, provider and model. Stores only
+1. **Exact-match cache (moved to the 0.2.0 core).** Key: hash of the redacted window, task, provider and model. Stores only
    redacted text, mode 0600, with a TTL and a size cap, per project, honouring deny globs, and
    `kellu cache clear`. Cuts repeated hovers and completions to zero tokens.
 2. **Project symbol index** (no model): definitions and their doc comments or signatures,
@@ -197,8 +208,7 @@ compatibility matrix for Kate versions, translated documentation reviewed.
 
 ## Still open (user decides)
 
-0. For 0.2.0: whether the ledger keeps the estimated cost in the user's currency (needs a rate
-   the user sets) or only in the service's own unit (recommended: the service's unit, no rates).
+0. Decided (2026-11-24): the ledger shows cost in each service's own unit, informational only.
 
 1. Confirm the order above (it moves the agent from 0.2.0 to 0.5.0 and memory from 0.4.0 to 0.6.0).
 2. Whether the 0.3.0 cache may persist between sessions by default (recommended: yes, redacted,

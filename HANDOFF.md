@@ -156,6 +156,11 @@ cascada; sin base de datos al inicio), 0.4.0 Prosa (diagnósticos LSP, regiones 
 LanguageTool), 0.5.0 agente, 0.6.0 memoria, 0.7.0 gateway y ACP, 0.8.0 runtimes locales y MCP,
 0.9.0 endurecimiento y empaquetado, 1.0.0 con criterios de estabilidad. README, ARCHITECTURE y
 SECURITY conservan la numeración anterior hasta que el usuario confirme.
+Decidido el 2026-11-24: 0.2.0 incluye gestión de tokens y costo (perfil por modelo, planificador de
+presupuesto, registro de uso con topes, `kellu usage`, presets de prompt) y la caché exacta; el costo
+se muestra en la unidad de cada servicio, solo informativo; `kellu bench` y las políticas `fastest` y
+`quality` quedan en 0.2.x. Regla: gastar tokens es el último recurso (interruptor de IA, caché y
+planificador antes que el router).
 
 Después: 0.2.0 agente (loop con herramientas, diagnósticos y code actions); 0.3.0 gateway
 compatible con OpenAI y ACP; 0.4.0 memoria (SQLite, pgvector opcional); 0.5.0 runtimes locales,
