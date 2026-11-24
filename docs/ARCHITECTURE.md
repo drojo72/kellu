@@ -151,19 +151,22 @@ Transport rules (`kellu-providers`, enforced by tests in `crates/kellu-providers
 
 | Feature | Version | Placement |
 |---|---|---|
-| Decision cascade (rules, memory, LLM) | 0.2.0 to 0.4.0 | `kellu-core`, module `cascade` |
-| Agent loop | 0.2.0 | `kellu-core`, module `agent` |
-| OpenAI-compatible gateway, ACP agent mode | 0.3.0 | `kellu-frontends`, modules `gateway`, `acp` |
-| Memory store (SQLite, optional pgvector) | 0.4.0 | new lower crate `kellu-memory` (depends on `common`) |
-| MCP server | 0.5.0 | `kellu-frontends`, module `mcp_server` |
-| MCP client (agents and external tools) | 0.5.0 | `kellu-tools`, module `mcp_client` |
-| Local runtime detection | 0.5.0 | `kellu-providers`, module `local` |
+| Decision cascade (cache, rules, memory, LLM) | 0.2.0 to 0.6.0 | `kellu-core`, module `cascade` |
+| Agent loop | 0.5.0 | `kellu-core`, module `agent` |
+| OpenAI-compatible gateway, ACP agent mode | 0.7.0 | `kellu-frontends`, modules `gateway`, `acp` |
+| Memory store (SQLite, optional pgvector) | 0.6.0 | new lower crate `kellu-memory` (depends on `common`) |
+| MCP server | 0.8.0 | `kellu-frontends`, module `mcp_server` |
+| MCP client (agents and external tools) | 0.8.0 | `kellu-tools`, module `mcp_client` |
+| Local runtime detection | 0.8.0 | `kellu-providers`, module `local` |
+| Model catalog, profiles, budget planner, usage ledger, exact-match cache | 0.2.0 | `kellu-providers` (catalog, profiles), `kellu-core` (modules `budget`, `ledger`, `cache`) |
+| Project symbol index, local prediction | 0.3.0 | `kellu-core`, module `local` |
+| LanguageTool backend, Markdown regions | 0.4.0 | `kellu-core`, modules `prose`, `regions` |
 | Scope and grants | M3 (done; consumed from M4) | `kellu-security`, modules `scope`, `grant` |
 | Append-only audit log | M3 (done; consumed from M5) | `kellu-security`, module `audit` |
 | Sandbox mounts derived from a grant, staging copy | M4 (done; consumed from M5) | `kellu-sandbox`, modules `policy`, `staging`, `bwrap` |
 | Proposal contract and host-side apply | M5 (done) | `kellu-tools`, modules `proposal`, `apply` |
 | Tool registry, risk enforcement | M5 (done) | `kellu-tools`, modules `spec`, `registry` |
-| Kate LSP server (hover, completion; later diagnostics, code actions) | M6 (done), 0.2.0 | `kellu-frontends`, module `lsp` |
+| Kate LSP server (hover, completion; later diagnostics, code actions) | M6 (done), 0.2.0 (robustness), 0.4.0 (diagnostics), 0.5.0 (code actions) | `kellu-frontends`, module `lsp` |
 
 Protocol adapters (ACP, MCP, gateway) are **frontends** or **tools**, never top-level crates.
 Adding `kellu-memory` or any other crate means adding its row to `ALLOWED` in the same change.

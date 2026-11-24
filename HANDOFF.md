@@ -128,7 +128,7 @@ adaptadores, así que es una segunda referencia para M2 y M3.
    el acoplamiento más débil con Kate (solo entrada y salida estándar); un plugin de KDE, el más fuerte.
 3. **Soluciones propias en Rust si hacen falta;** en C solo tras analizarlo y como proceso aparte
    dentro del sandbox, nunca enlazado al workspace (`#![forbid(unsafe_code)]`).
-4. **Corrector gramatical para Markdown (0.2.0 o después).** El usuario escribe en español, inglés y
+4. **Corrector gramatical para Markdown (0.4.0).** El usuario escribe en español, inglés y
    alemán, y algunos proyectos en francés, italiano, hebreo, griego y latín. Hechos verificados el
    2026-11-13: LanguageTool 6.6 cubre es, en, de, fr (reglas abundantes), it y el (pocas reglas, poca
    actividad) y **no** he ni la; LTeX+ (`ltex-ls-plus`) es un servidor LSP con Markdown que trae su
@@ -136,7 +136,7 @@ adaptadores, así que es una segunda referencia para M2 y M3.
    permite 20 peticiones por minuto y 20 KB por petición y **prohíbe el uso automático** (hay que usar
    una instancia propia o Enterprise); Harper (`harper-ls`, Rust) solo documenta inglés; `nlprule`
    (Rust) cubre en, de y es (experimental) con reglas de LanguageTool 5.2 y sin mantenimiento
-   confirmado. Plan: (a) en 0.2.0 probar que LanguageTool funciona con Kate y **medir su memoria**
+   confirmado. Plan: (a) en 0.4.0 probar que LanguageTool funciona con Kate y **medir su memoria**
    (RSS) con un `.md` normal; (b) es/en/de/fr con LanguageTool (servidor propio o nube premium, vía
    HTTPS sin Java local); it/el con el modelo como segunda opinión; he/la con el corrector de Kate y
    una acción de código del modelo; (c) solución propia en Rust solo si hace falta y salvo que
@@ -148,23 +148,35 @@ adaptadores, así que es una segunda referencia para M2 y M3.
    idioma por archivo, sección o bloque; si Kate admite varios servidores por documento (el usuario
    lo probará; condición previa para convivir con LTeX+).
 
-**Propuesta de ruta a 1.0 (2026-11-13, sin confirmar): ver `docs/ROADMAP.md`.** Orden propuesto:
+**Ruta a 1.0 (propuesta 2026-11-13, confirmada por el usuario el 2026-11-24): ver `docs/ROADMAP.md`.** Orden:
 0.2.0 Control (catálogo real de modelos, activar/desactivar proveedores y modelos, parámetros por
 proveedor, memoria de salud del router, interruptor de IA, LSP con hilo de trabajo y cancelación),
 0.3.0 Local (caché exacta, índice de símbolos del proyecto, predicción local, etapas 1 y 2 de la
 cascada; sin base de datos al inicio), 0.4.0 Prosa (diagnósticos LSP, regiones Markdown,
 LanguageTool), 0.5.0 agente, 0.6.0 memoria, 0.7.0 gateway y ACP, 0.8.0 runtimes locales y MCP,
-0.9.0 endurecimiento y empaquetado, 1.0.0 con criterios de estabilidad. README, ARCHITECTURE y
-SECURITY conservan la numeración anterior hasta que el usuario confirme.
+0.9.0 endurecimiento y empaquetado, 1.0.0 con criterios de estabilidad. README, ARCHITECTURE,
+SECURITY y los documentos de diseño ya usan esta numeración.
 Decidido el 2026-11-24: 0.2.0 incluye gestión de tokens y costo (perfil por modelo, planificador de
 presupuesto, registro de uso con topes, `kellu usage`, presets de prompt) y la caché exacta; el costo
 se muestra en la unidad de cada servicio, solo informativo; `kellu bench` y las políticas `fastest` y
 `quality` quedan en 0.2.x. Regla: gastar tokens es el último recurso (interruptor de IA, caché y
 planificador antes que el router).
 
-Después: 0.2.0 agente (loop con herramientas, diagnósticos y code actions); 0.3.0 gateway
-compatible con OpenAI y ACP; 0.4.0 memoria (SQLite, pgvector opcional); 0.5.0 runtimes locales,
-perfiles de hardware y MCP.
+**Arranque de 0.2.0 (rama nueva `v0.2-control`, desde `main` tras el merge de M7):** orden sugerido
+de trabajo, de menos a más riesgo: (1) salud del router (cooldown de un primario caído; respuesta
+vacía cuenta como fallo y pasa al siguiente) y `kellu providers status`; (2) interruptor de IA
+(`[ai]`, por lenguaje, glob y proyecto) y robustez del LSP (hilo de trabajo, `$/cancelRequest`,
+timeout, `window/showMessage`); (3) catálogo (`kellu models refresh|list|use`, solo bajo comando
+explícito, respuestas tratadas como datos no confiables) y activar/desactivar proveedores y modelos;
+(4) parámetros por proveedor (tope de tokens, razonamiento, límites); (5) perfil de modelo,
+planificador de presupuesto, registro de uso con topes y `kellu usage`, presets de prompt;
+(6) caché exacta. Antes de empezar: verificar con una llamada real los ids de modelo de
+`defaults.toml` (`groq` sigue dando 404 en la cuenta del usuario) y revisar las APIs de catálogo de
+cada servicio. Cola 0.2.x: `kellu bench`, políticas `fastest` y `quality`.
+
+Después, según la ruta confirmada: 0.2.0 control; 0.3.0 local; 0.4.0 prosa; 0.5.0 agente (loop con
+herramientas, diagnósticos y code actions con modelo); 0.6.0 memoria; 0.7.0 gateway y ACP; 0.8.0
+runtimes locales, perfiles de hardware y MCP; 0.9.0 endurecimiento; 1.0.0.
 
 ## 4. Inventario de claves (solo nombres)
 - provider: `ai_openrouter_api_key`, `ai_google_api_key`, `ai_deepseek_api_key`, `ai_grok_api_key`, `ai_groq_api_key`, `ai_gemma_direct_api_key` (ya copiada; borrar la entrada antigua `gemma_direct_api_key` tras verificar).
@@ -301,7 +313,7 @@ ejemplo ni el contenido de `.env` aparecen en lo enviado.
 4. Sincronización de texto completa; sin caracteres de activación; hover en texto plano; completion
    como una sola edición de texto plano (`insertTextFormat` 1: un `$1` del modelo nunca se expande).
 5. Errores del modelo ⇒ resultado vacío y una línea en el log privado, nunca un mensaje a Kate.
-6. El REPL no usa herramientas: el bucle de agente es 0.2.0. Comandos: `/help`, `/clear`, `/exit`.
+6. El REPL no usa herramientas: el bucle de agente es 0.5.0. Comandos: `/help`, `/clear`, `/exit`.
 7. `kellu chat`/`lsp` no exigen keyring: avisan por stderr y siguen.
 
 **Abiertos tras M6:**
@@ -310,7 +322,7 @@ ejemplo ni el contenido de `.env` aparecen en lo enviado.
    caché por versión de documento).
 2. Patrones deny del usuario siguen sin leerse de `config.toml` (pendiente desde M3); solo la lista
    incorporada.
-3. `kellu-projects` sigue sin crearse (decidir con 0.2.0).
+3. `kellu-projects` sigue sin crearse (0.5.0).
 4. Sin aviso visible en Kate cuando falla el modelo (`window/showMessage` es 0.2.0, comportamiento
    por verificar).
 5. El REPL no muestra aún propuestas ni pide confirmaciones (llegan con el bucle de agente).

@@ -12,9 +12,8 @@
 
 # Roadmap to 1.0
 
-> **Status: proposal (2026-11-13), not yet confirmed.** README, ARCHITECTURE and SECURITY still
-> carry the earlier numbering (0.2.0 agent, 0.3.0 gateway, 0.4.0 memory, 0.5.0 adaptation). They
-> are updated once this order is confirmed. Crate and library names below are candidates: check
+> **Status: confirmed by the user on 2026-11-24.** README, README.es, ARCHITECTURE, SECURITY and
+> the design documents use this numbering. Crate and library names below are candidates: check
 > versions, licences and maintenance when the milestone starts, not before.
 
 ## Where we are
