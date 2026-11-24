@@ -31,8 +31,8 @@ server configuration through the `lspclient` entry of `.kateproject`; one server
 |---|---|---|---|
 | AI hover explanation | `textDocument/hover` | 0.1.0 | Keep answers short and cached; the user can request it manually |
 | AI completion | `textDocument/completion` | 0.1.0 | One multi-line item with a `textEdit`; a dropdown, not ghost text; no trigger characters, so it runs only on manual request |
-| Review findings | `publishDiagnostics` (info or hint, source `kellu`) | 0.2.0 | On request or on save; Kate supports suppressions |
-| Suggested edits | `textDocument/codeAction` returning an `edit` | 0.2.0 | One action per hunk plus "Apply all": picking hunks is partial approval, "Apply all" is full, ignoring is deny. Titles must describe the change because there is no diff preview. Whether actions appear without a diagnostic at the position is **(verify)**; anchor them on an informational diagnostic if not |
+| Review findings | `publishDiagnostics` (info or hint, source `kellu`) | 0.4.0 (LanguageTool), 0.5.0 (model) | On request or on save; Kate supports suppressions |
+| Suggested edits | `textDocument/codeAction` returning an `edit` | 0.4.0 (LanguageTool fixes), 0.5.0 (model hunks) | One action per hunk plus "Apply all": picking hunks is partial approval, "Apply all" is full, ignoring is deny. Titles must describe the change because there is no diff preview. Whether actions appear without a diagnostic at the position is **(verify)**; anchor them on an informational diagnostic if not |
 | Per-project settings | `initializationOptions`, `workspace/didChangeConfiguration` | 0.1.0 | Comes from `.kateproject`: untrusted, may only tighten policy |
 | Messages and progress | `window/showMessage`, `$/progress` | 0.2.0 | Shown in Kate's Output tab; behavior **(verify)** |
 

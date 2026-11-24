@@ -16,7 +16,7 @@
 
 **Asistente de IA seguro y modular para el editor Kate, que piensa antes de gastar tokens.**
 
-> **Estado: pre-0.1.0.** Se reconstruye en Rust con diseño de seguridad primero. Los hitos M0 a M6 están hechos (workspace, configuración estricta, logs y sesiones privados, `kellu doctor`, `kellu config`, proveedores de modelos y router con paridad respecto del prototipo, la capa de seguridad: bóveda de claves, redacción, deny globs, scope, grants, permisos y auditoría, el sandbox con bubblewrap y sus tests de escape, y las herramientas: un registro con riesgo obligatorio por herramienta, cambios propuestos que solo el núcleo aplica tras tu aprobación, comandos en sandbox y git endurecido, y los frontends: un chat en terminal y un servidor LSP para Kate con hover y completado). El modelo puede explicar y completar código y conversar, pero aún no llama a las herramientas (el bucle de agente es 0.2.0). Los prototipos anteriores en Python y Ruby viven en las ramas `original-python` y `kellu-prototype-ruby` y son la referencia de comportamiento del port. Las APIs, comandos y configuración cambiarán. Aún no hay versión publicada. Modelo de seguridad: ver [SECURITY.md](SECURITY.md).
+> **Estado: pre-0.1.0.** Se reconstruye en Rust con diseño de seguridad primero. Los hitos M0 a M6 están hechos (workspace, configuración estricta, logs y sesiones privados, `kellu doctor`, `kellu config`, proveedores de modelos y router con paridad respecto del prototipo, la capa de seguridad: bóveda de claves, redacción, deny globs, scope, grants, permisos y auditoría, el sandbox con bubblewrap y sus tests de escape, y las herramientas: un registro con riesgo obligatorio por herramienta, cambios propuestos que solo el núcleo aplica tras tu aprobación, comandos en sandbox y git endurecido, y los frontends: un chat en terminal y un servidor LSP para Kate con hover y completado). El modelo puede explicar y completar código y conversar, pero aún no llama a las herramientas (el bucle de agente es 0.5.0). Los prototipos anteriores en Python y Ruby viven en las ramas `original-python` y `kellu-prototype-ruby` y son la referencia de comportamiento del port. Las APIs, comandos y configuración cambiarán. Aún no hay versión publicada. Modelo de seguridad: ver [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -39,10 +39,15 @@ Kellu lleva asistencia de IA a [Kate](https://kate-editor.org/) sin una pila gr�
 | Versión | Enfoque | Contenido |
 |---|---|---|
 | **0.1.0** | Base segura | Núcleo modular, proveedores unificados (compatible con OpenAI; Gemini y Gemma vía Google; OpenRouter, DeepSeek y xAI Grok incluidos), vault de keyring con niveles, redacción y deny globs, permisos por riesgo, **sandbox** (bubblewrap), herramientas (archivos, shell en sandbox, git), REPL en terminal, LSP para Kate (hover y completado), `kellu doctor` |
-| **0.2.0** | Agente | Loop de agente con herramientas y confirmaciones, etapa de reglas de la cascada, inyección de contexto, diagnósticos LSP y sugerencias de corrección rápida |
-| **0.3.0** | Interoperabilidad | Gateway local compatible con OpenAI, modo agente ACP |
-| **0.4.0** | Memoria | Almacén de soluciones aceptadas (SQLite por defecto, PostgreSQL + pgvector opcional), etapa de memoria |
-| **0.5.0** | Adaptación | Detección de runtimes locales (Ollama, LM Studio, llama.cpp), perfiles de hardware, servidor y cliente MCP |
+| **0.2.0** | Control | Catálogo real de modelos por servicio, activar o desactivar proveedores y modelos, parámetros por proveedor, salud del router, interruptor de IA, gestión de tokens y costo (planificador de presupuesto, registro de uso con topes, `kellu usage`), caché exacta, LSP robusto |
+| **0.3.0** | Local | Índice de símbolos del proyecto, predicción local y hover sin modelo, etapa de reglas de la cascada |
+| **0.4.0** | Prosa | Diagnósticos LSP, regiones Markdown, LanguageTool |
+| **0.5.0** | Agente | Loop de agente con herramientas y confirmaciones, inyección de contexto, diagnósticos y correcciones rápidas con modelo, `kellu-projects` |
+| **0.6.0** | Memoria | Almacén de soluciones aceptadas (SQLite por defecto, PostgreSQL + pgvector opcional), etapa de memoria |
+| **0.7.0** | Interoperabilidad | Gateway local compatible con OpenAI, modo agente ACP |
+| **0.8.0** | Adaptación | Detección de runtimes locales (Ollama, LM Studio, llama.cpp), perfiles de hardware, servidor y cliente MCP |
+| **0.9.0** | Endurecimiento | Revisión de seguridad externa, fuzzing, empaquetado |
+| **1.0.0** | Estable | Contratos estables, revisión cerrada, instalable por otras personas. Ver [docs/ROADMAP.md](docs/ROADMAP.md) |
 | **Después** | | GUI mediante plugins existentes de Kate; backends de sandbox Landlock, macOS y Windows |
 
 0.1.0 **no incluye intencionalmente un loop de agente autónomo**: las herramientas, los permisos y el sandbox se validan por separado antes de que un modelo pueda dispararlos.
@@ -88,7 +93,7 @@ El núcleo no tiene interfaz ni efectos secundarios al importarse. Frontends, pr
 
 Detalles, modelo de amenazas y límites: [SECURITY.md](SECURITY.md).
 
-## Cascada de decisión (diseño, 0.2.0 a 0.4.0)
+## Cascada de decisión (diseño, 0.2.0 a 0.6.0)
 
 1. **Reglas.** Manejo determinista que no necesita modelo (detección de stack, estado de git, comandos conocidos).
 2. **Memoria.** Busca soluciones aceptadas previamente. Se reutiliza solo si la aceptaste o pasaron los tests, supera un umbral de similitud y no ha caducado. Las respuestas reutilizadas se etiquetan "desde memoria".
@@ -100,7 +105,7 @@ Los proyectos se descubren bajo una raíz configurable y se agrupan en macro-pro
 
 ## Agentes y extensiones
 
-Kellu hablará los protocolos abiertos para agentes y herramientas (ACP y MCP, entre 0.3.0 y 0.5.0). Los agentes y servidores MCP, propios o de terceros, se tratan como **extensiones no confiables**: corren como procesos en sandbox con entorno depurado, se habilitan solo mediante una lista de permitidos explícita por servidor, y cada herramienta que exponen necesita un nivel de riesgo declarado. No hay código por agente dentro del núcleo; un único cliente genérico los atiende a todos.
+Kellu hablará los protocolos abiertos para agentes y herramientas (ACP y MCP, entre 0.7.0 y 0.8.0). Los agentes y servidores MCP, propios o de terceros, se tratan como **extensiones no confiables**: corren como procesos en sandbox con entorno depurado, se habilitan solo mediante una lista de permitidos explícita por servidor, y cada herramienta que exponen necesita un nivel de riesgo declarado. No hay código por agente dentro del núcleo; un único cliente genérico los atiende a todos.
 
 Ideas en evaluación, como repositorios separados y fuera de 0.1.0:
 
@@ -129,7 +134,7 @@ kellu/
 └── packaging/             # entrada de escritorio
 ```
 
-Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-common` (M0), `kellu-core` y `kellu-providers` (M1; clientes, transporte y router desde M2), `kellu-security` (M3), `kellu-sandbox` (M4) `kellu-tools` (M5) y `kellu-frontends` (M6). Falta `kellu-projects`, y más adelante un crate `kellu-memory` (0.4.0, SQLite y pgvector opcional). La cascada de decisión vive en `kellu-core` (0.2.0 a 0.4.0) y el cliente MCP en `kellu-tools` (0.5.0). Cargo hace cumplir la dirección de dependencias (un ciclo no compila) y un test sobre `cargo metadata`. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [docs/PORTING.md](docs/PORTING.md).
+Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-common` (M0), `kellu-core` y `kellu-providers` (M1; clientes, transporte y router desde M2), `kellu-security` (M3), `kellu-sandbox` (M4) `kellu-tools` (M5) y `kellu-frontends` (M6). Falta `kellu-projects`, y más adelante un crate `kellu-memory` (0.6.0, SQLite y pgvector opcional). La cascada de decisión vive en `kellu-core` (0.2.0 a 0.6.0) y el cliente MCP en `kellu-tools` (0.8.0). Cargo hace cumplir la dirección de dependencias (un ciclo no compila) y un test sobre `cargo metadata`. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) y [docs/PORTING.md](docs/PORTING.md).
 
 ## Inicio rápido
 
@@ -193,7 +198,7 @@ completion = true
 
 El archivo debe estar en un proyecto (un directorio `.git`, `Cargo.toml` o similar bajo tu directorio personal); Kate manda tu directorio personal como raíz cuando no encuentra proyecto, y Kellu busca entonces el proyecto de cada archivo. Las respuestas son síncronas: un proveedor lento hace esperar a Kate.
 
-En 0.1.0 el servidor LSP de Kellu ofrece **hover** y **completado**; los diagnósticos y las sugerencias de corrección rápida llegan con el trabajo del agente en 0.2.0. El chat, la vista previa de diffs y el texto fantasma necesitan otros frontends (ver [docs/design/lsp-capabilities.md](docs/design/lsp-capabilities.md)). Revisa la documentación del cliente LSP de Kate para el formato exacto en tu versión.
+En 0.1.0 el servidor LSP de Kellu ofrece **hover** y **completado**; los diagnósticos y las sugerencias de corrección rápida llegan con LanguageTool en 0.4.0 y el trabajo del agente en 0.5.0. El chat, la vista previa de diffs y el texto fantasma necesitan otros frontends (ver [docs/design/lsp-capabilities.md](docs/design/lsp-capabilities.md)). Revisa la documentación del cliente LSP de Kate para el formato exacto en tu versión.
 
 ## Configuración
 

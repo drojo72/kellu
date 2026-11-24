@@ -12,9 +12,8 @@
 
 # Roadmap to 1.0
 
-> **Status: proposal (2026-11-13), not yet confirmed.** README, ARCHITECTURE and SECURITY still
-> carry the earlier numbering (0.2.0 agent, 0.3.0 gateway, 0.4.0 memory, 0.5.0 adaptation). They
-> are updated once this order is confirmed. Crate and library names below are candidates: check
+> **Status: confirmed by the user on 2026-11-24.** README, README.es, ARCHITECTURE, SECURITY and
+> the design documents use this numbering. Crate and library names below are candidates: check
 > versions, licences and maintenance when the milestone starts, not before.
 
 ## Where we are
@@ -35,9 +34,19 @@ What the first real-world tests showed, and the plan below fixes:
 
 ## Proposed order
 
-### 0.2.0 Control (providers, models, switches)
+### 0.2.0 Control (providers, models, tokens and cost)
 
 The most valuable step after 0.1.0, because it is what hurt in real use.
+
+**Guiding rule: a token spent is the last resort.** A request reaches a model only after everything
+cheaper has had its chance: the AI switch (off means nothing is sent), the exact-match cache,
+the budget planner (which may refuse), and only then the router, whose chain starts with the
+cheapest suitable provider. To keep 0.2.0 small, the work is split in a core and a tail (0.2.x).
+
+**0.2.0 core:** model catalog, enable and disable, provider parameters, router health, AI switch,
+LSP robustness, exact-match cache, budget planner, usage ledger with caps, `kellu usage`, prompt
+presets. **0.2.x tail (only if the core proves stable):** `kellu bench`, the `fastest` and
+`quality` policies, the golden set.
 
 - **Model catalog.** `kellu models refresh [provider]` asks each service for the models the
   account can really use (`GET /models` for OpenAI-compatible services, the model list of Google),
@@ -54,6 +63,8 @@ The most valuable step after 0.1.0, because it is what hurt in real use.
 - **Router health:** remember a failing provider for a cooldown (circuit breaker) so a dead
   primary costs one failure, not one per request; an empty answer counts as a failure and falls
   through; `kellu providers status` shows state.
+- **Token and cost management** (the goal: best quality per unit of cost, and as much of the
+  budget as possible left for the answer). Details in the next section.
 - **AI switch:** `[ai] enabled`, with overrides per language id, per file glob and per project;
   off means nothing leaves the machine and the server answers with local data only.
 - **LSP robustness:** a worker thread for model calls, `$/cancelRequest`, a per-request timeout,
@@ -61,11 +72,60 @@ The most valuable step after 0.1.0, because it is what hurt in real use.
 - Documents: SECURITY (catalog responses are untrusted data: names are sanitized, never executed
   or placed in prompts), config reference.
 
-### 0.3.0 Local (cache, project index, rules)
+#### Token and cost management (0.2.0)
+
+**1. Model profile.** Each model in the catalog gets a profile: context window and maximum output
+(from the catalog where the service reports them, otherwise set by the user), price per million
+tokens (OpenRouter's model list includes prices; for other services they are set in the config and
+flagged `unknown` until then; verify each service when the milestone starts), whether it reasons,
+and an **effective context**: the largest prompt size at which answers stay reliable. The effective
+context is not the advertised window; long prompts degrade quality well before the limit, so the
+default is conservative (a fraction of the window, a heuristic to be replaced by measurement).
+
+**2. Budget planner** (in `kellu-core::assist`, the single egress point). Every request is planned
+before it is sent: `prompt budget = min(effective context, window - reserve)`, where the reserve is
+the output you want plus headroom for hidden reasoning (the failure seen in 0.1.0). If the prompt
+does not fit, it is compacted in a fixed order, cheapest loss first: (a) drop the oldest chat turns,
+(b) narrow the code window around the cursor, (c) collapse blank runs and comments the task does
+not need, (d) refuse with a clear message rather than send a truncated task that invites a made-up
+answer. No model call is used to compact: it must not spend tokens to save tokens.
+
+**3. Token counting.** There is no exact tokenizer for every service, so Kellu estimates (characters
+per token, per language: Spanish and German cost more than English) and **calibrates** the ratio per
+model from the `usage` each response reports. The estimate only plans; the service's own count is
+what the ledger records.
+
+**4. Ledger and policy** (core: `cheapest` and `balanced`; the rest in the tail). A local usage ledger (provider, model, task, prompt and answer tokens,
+latency, outcome, estimated cost; never any text; mode 0600; rotated; the cost is shown in each service's own unit, for people to
+read, with no currency conversion) feeds `kellu usage` (by day,
+provider, model, route). Per route, a **policy** picks the order of the chain: `cheapest`,
+`fastest`, `balanced` or `quality`, with limits: maximum cost per request, daily and monthly caps,
+and what happens at the cap (fall to a cheaper model, fall to local only, or stop). Paid models are
+shown as paid and never used for a route unless allowed.
+
+**5. Calibration command, explicit and capped (0.2.x tail).** `kellu bench <provider/model>` measures, with a
+token cap you confirm before it runs: latency and tokens per second, and the **effective
+context** with a needle-in-context test at growing prompt sizes (the first size where recall drops
+is the safe limit; Kellu stores it in the profile). The user may add a small golden set of their own
+questions to compare models on their real tasks. This is how "the window of first-quality answers
+before it starts making things up" is estimated: measured per model, never assumed, and it costs
+tokens, so it never runs on its own.
+
+**6. Token-saving prompt presets** (what the roadmap calls skills). Short, fixed instructions per
+task kind (explain, complete, review, summarise, translate) that ask for a bounded, plain answer
+and set the output reserve; chosen by the router's task classifier. They are Kellu configuration,
+versioned with the code and tested for injection like the rest of the prompt (a preset never
+contains user text), not model-side skills.
+
+What this cannot do: no number guarantees the absence of fabricated answers. The effective context
+lowers the risk, the planner refuses what does not fit, and the answers keep their "not verified"
+nature; correctness still needs the user's review and, in 0.5.0, tests.
+
+### 0.3.0 Local (project index, prediction, rules)
 
 Goal: fewer tokens and faster hover without changing the trust model.
 
-1. **Exact-match cache.** Key: hash of the redacted window, task, provider and model. Stores only
+1. **Exact-match cache (moved to the 0.2.0 core).** Key: hash of the redacted window, task, provider and model. Stores only
    redacted text, mode 0600, with a TTL and a size cap, per project, honouring deny globs, and
    `kellu cache clear`. Cuts repeated hovers and completions to zero tokens.
 2. **Project symbol index** (no model): definitions and their doc comments or signatures,
@@ -146,6 +206,8 @@ compatibility matrix for Kate versions, translated documentation reviewed.
   local layer and scopes being in place, and 0.1.0 already validated tools and sandbox apart.
 
 ## Still open (user decides)
+
+0. Decided (2026-11-24): the ledger shows cost in each service's own unit, informational only.
 
 1. Confirm the order above (it moves the agent from 0.2.0 to 0.5.0 and memory from 0.4.0 to 0.6.0).
 2. Whether the 0.3.0 cache may persist between sessions by default (recommended: yes, redacted,
