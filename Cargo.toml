@@ -4,7 +4,7 @@ resolver = "3"
 members = ["crates/*", "kellu"]
 
 [workspace.package]
-version = "0.1.0-dev.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
@@ -13,13 +13,13 @@ authors = ["<copyright holder>"]
 
 [workspace.dependencies]
 # Internal crates (path dependencies). Layer rules are enforced by kellu/tests/architecture.rs.
-kellu-common = { path = "crates/kellu-common", version = "0.1.0-dev.0" }
-kellu-security = { path = "crates/kellu-security", version = "0.1.0-dev.0" }
-kellu-sandbox = { path = "crates/kellu-sandbox", version = "0.1.0-dev.0" }
-kellu-tools = { path = "crates/kellu-tools", version = "0.1.0-dev.0" }
-kellu-providers = { path = "crates/kellu-providers", version = "0.1.0-dev.0" }
-kellu-core = { path = "crates/kellu-core", version = "0.1.0-dev.0" }
-kellu-frontends = { path = "crates/kellu-frontends", version = "0.1.0-dev.0" }
+kellu-common = { path = "crates/kellu-common", version = "0.1.0" }
+kellu-security = { path = "crates/kellu-security", version = "0.1.0" }
+kellu-sandbox = { path = "crates/kellu-sandbox", version = "0.1.0" }
+kellu-tools = { path = "crates/kellu-tools", version = "0.1.0" }
+kellu-providers = { path = "crates/kellu-providers", version = "0.1.0" }
+kellu-core = { path = "crates/kellu-core", version = "0.1.0" }
+kellu-frontends = { path = "crates/kellu-frontends", version = "0.1.0" }
 
 # External crates. Every entry needs a one-line justification here.
 clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] } # CLI parsing
