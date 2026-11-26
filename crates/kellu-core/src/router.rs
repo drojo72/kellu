@@ -252,6 +252,23 @@ impl Router {
         self.providers.keys().map(String::as_str)
     }
 
+    /// The clock this router runs on, so a cache can share it (tests move one clock by hand).
+    #[must_use]
+    pub fn clock(&self) -> Clock {
+        Arc::clone(&self.clock)
+    }
+
+    /// The providers tried for `task`, in order, as one comma-separated string. It is part of a
+    /// cache key: the same prompt sent along another route is another request.
+    #[must_use]
+    pub fn route_fingerprint(&self, task: TaskKind) -> String {
+        self.config
+            .route(task.as_str())
+            .chain()
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+
     fn attempts(&self, task: TaskKind, request: &ChatRequest) -> Attempts<'_> {
         Attempts {
             providers: &self.providers,

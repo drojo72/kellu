@@ -216,14 +216,30 @@ fn hover_explains_the_symbol_in_plain_text_and_is_cached_per_version() {
         "the same symbol at the same version is answered from the cache"
     );
 
+    let edited = "fn main() {\n    helper(); // edited\n}\n";
     send(
         &mut server,
         &json!({"jsonrpc":"2.0","method":"textDocument/didChange","params":{
             "textDocument":{"uri": uri(&file), "version": 2},
+            "contentChanges":[{"text": edited}]}}),
+    );
+    hover(&mut server, &file, 1, 5);
+    assert_eq!(probe.calls(), 2, "a new version with new text asks again");
+
+    // Back to the original text in version 3: the per-version cache of the server is empty for
+    // it, but the assistant's exact-match cache has seen this very request, so it costs nothing.
+    send(
+        &mut server,
+        &json!({"jsonrpc":"2.0","method":"textDocument/didChange","params":{
+            "textDocument":{"uri": uri(&file), "version": 3},
             "contentChanges":[{"text": text}]}}),
     );
     hover(&mut server, &file, 1, 5);
-    assert_eq!(probe.calls(), 2, "a new version asks again");
+    assert_eq!(
+        probe.calls(),
+        2,
+        "identical text is answered by the assistant's cache, with no provider call"
+    );
 }
 
 #[test]

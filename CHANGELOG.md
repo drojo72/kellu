@@ -18,6 +18,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 
 ## [Unreleased]
 
+### 0.2.0 (in development, branch `dev-0.2-control`)
+
+#### Added
+- `kellu-core::plan`: token budget planning with no model call. A deliberately pessimistic token
+  estimate (ASCII a quarter token per character, anything else half), loss-free compaction (blank
+  runs, trailing spaces; never the line being typed) and a window narrowing that shrinks both sides
+  of the cursor together.
+- `kellu-core::cache`: exact-match answer cache, in memory, with TTL, entry and byte caps. The key
+  is a SHA-256 of task, route, sampling settings and the redacted messages; only the key and the
+  cleaned answer are kept, never the prompt. Failures and empty answers are never cached.
+- `Assistant` uses both: a repeated hover or completion costs no tokens; a prompt over
+  `Limits::prompt_tokens` (default 4000) is compacted (blank runs first, then the code farthest from
+  the cursor) and, if it still does not fit, refused with the new `KelluError::PromptTooLarge`
+  before anything is sent. The chat drops its oldest turns for the token budget and refuses a newest
+  message that alone does not fit.
+- `Router::clock` and `Router::route_fingerprint`.
+
+#### Fixed
+- **Redaction ran after the window was cut**, so a secret straddling the edge of the window (or a
+  private key whose `BEGIN` line was cut off) went out as an unredacted fragment. A wide span
+  (100 000 characters) is now redacted first and the window is cut afterwards. Covered by two
+  negative tests that fail without the fix.
+
+#### Changed
+- Workspace version is `0.2.0-dev.0`.
+- The LSP hover test now distinguishes the server's per-version cache from the assistant's
+  exact-match cache: the same text in a new version costs no provider call.
+
 ### Changed
 - Packaged routes: `code` and `explain` now start with `gemma_direct` (the old primaries failed on
   balance or demand and made the first hover take seconds). Provider `groq` uses

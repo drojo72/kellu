@@ -86,8 +86,8 @@ default is conservative (a fraction of the window, a heuristic to be replaced by
 before it is sent: `prompt budget = min(effective context, window - reserve)`, where the reserve is
 the output you want plus headroom for hidden reasoning (the failure seen in 0.1.0). If the prompt
 does not fit, it is compacted in a fixed order, cheapest loss first: (a) drop the oldest chat turns,
-(b) narrow the code window around the cursor, (c) collapse blank runs and comments the task does
-not need, (d) refuse with a clear message rather than send a truncated task that invites a made-up
+(b) collapse blank runs and trailing spaces (loses nothing; never the line being typed),
+(c) narrow the code window around the cursor, both sides together, (d) refuse with a clear message rather than send a truncated task that invites a made-up
 answer. No model call is used to compact: it must not spend tokens to save tokens.
 
 **3. Token counting.** There is no exact tokenizer for every service, so Kellu estimates (characters
@@ -125,7 +125,7 @@ nature; correctness still needs the user's review and, in 0.5.0, tests.
 
 Goal: fewer tokens and faster hover without changing the trust model.
 
-1. **Exact-match cache (moved to the 0.2.0 core).** Key: hash of the redacted window, task, provider and model. Stores only
+1. **Exact-match cache (moved to the 0.2.0 core; in-memory version done, persistence pending).** Key: hash of the redacted messages, task, route and sampling settings (the chain, since the provider is chosen by the router). Stores only
    redacted text, mode 0600, with a TTL and a size cap, per project, honouring deny globs, and
    `kellu cache clear`. Cuts repeated hovers and completions to zero tokens.
 2. **Project symbol index** (no model): definitions and their doc comments or signatures,

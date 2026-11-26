@@ -18,6 +18,10 @@ pub enum KelluError {
     /// A session log was used incorrectly (not started, already ended, bad entry kind).
     #[error("{0}")]
     Session(String),
+    /// The request does not fit the token budget even after compaction. Nothing was sent: a
+    /// truncated task invites an invented answer, so the request is refused instead.
+    #[error("{0}")]
+    PromptTooLarge(String),
     /// A model provider call failed.
     #[error(transparent)]
     Provider(#[from] ProviderError),
@@ -78,6 +82,11 @@ impl KelluError {
     /// Build a [`KelluError::Session`].
     pub fn session(message: impl Into<String>) -> Self {
         Self::Session(message.into())
+    }
+
+    /// Build a [`KelluError::PromptTooLarge`].
+    pub fn prompt_too_large(message: impl Into<String>) -> Self {
+        Self::PromptTooLarge(message.into())
     }
 
     /// Build a [`KelluError::Io`] for `path`.
