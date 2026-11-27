@@ -17,7 +17,7 @@ use secrecy::SecretString;
 
 use kellu_frontends::theme::Theme;
 
-use crate::{doctor, frontends_cmd, input, keys, providers_cmd, tools_cmd};
+use crate::{ai_cmd, doctor, frontends_cmd, input, keys, providers_cmd, tools_cmd};
 
 /// Success.
 pub const EXIT_OK: u8 = 0;
@@ -56,6 +56,11 @@ enum Command {
     },
     /// List the tools the assistant may use and what each needs from you
     Tools,
+    /// Switch the AI on or off without editing the configuration or restarting the editor
+    Ai {
+        #[command(subcommand)]
+        action: AiAction,
+    },
     /// Chat in the terminal (also what plain `kellu` does when run in a terminal)
     Chat,
     /// Run the language server for Kate on standard input and output (hover and completion)
@@ -92,6 +97,16 @@ enum ProvidersAction {
         /// Provider name from the configuration
         name: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, Copy, Subcommand)]
+enum AiAction {
+    /// Show whether anything can be sent to a model right now, and why not
+    Status,
+    /// Turn the AI on again
+    On,
+    /// Turn the AI off: nothing is sent to any model until `kellu ai on`
+    Off,
 }
 
 #[derive(Debug, Clone, Copy, Subcommand)]
@@ -144,6 +159,8 @@ pub struct Services {
     pub interactive: Box<dyn Fn() -> bool>,
     /// The user's home directory (a project root that contains it is refused).
     pub home: Box<dyn Fn() -> kellu_common::Result<std::path::PathBuf>>,
+    /// Where the flag file of `kellu ai off` lives. Resolving it creates nothing.
+    pub ai_flag: Box<dyn Fn() -> kellu_common::Result<std::path::PathBuf>>,
 }
 
 impl Services {
@@ -188,6 +205,9 @@ impl Services {
                 std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
             }),
             home: Box::new(kellu_security::scope::home_dir),
+            ai_flag: Box::new(|| {
+                kellu_common::paths::state_dir().map(|dir| dir.join(kellu_core::switch::FLAG_FILE))
+            }),
         }
     }
 }
@@ -271,6 +291,15 @@ fn config_show(out: &mut dyn Write, err: &mut dyn Write) -> u8 {
             config.router().total_timeout_s
         ),
     );
+    say(
+        out,
+        &format!(
+            "ai: {} (off for {} language(s) and {} glob(s)); `kellu ai status` shows the live state",
+            if config.ai().enabled { "on" } else { "off" },
+            config.ai().disabled_languages.len(),
+            config.ai().disabled_globs.len()
+        ),
+    );
     EXIT_OK
 }
 
@@ -352,6 +381,11 @@ where
             };
             providers_cmd::test(&config, name.as_deref(), &vault, services, out, err)
         }
+        Command::Ai { action } => match action {
+            AiAction::Status => ai_cmd::status(services, out, err),
+            AiAction::On => ai_cmd::on(services, out, err),
+            AiAction::Off => ai_cmd::off(services, out, err),
+        },
         Command::Tools => tools_cmd::list(out, err),
         Command::Chat => frontends_cmd::chat(services, out, err),
         Command::Lsp => frontends_cmd::lsp(services, out, err),
@@ -432,6 +466,8 @@ mod tests {
         store: Arc<MemoryStore>,
         seen: Seen,
         services: Services,
+        /// Keeps the directory of the AI flag file alive.
+        flag_dir: tempfile::TempDir,
     }
 
     fn defaults() -> kellu_common::Result<Config> {
@@ -463,6 +499,11 @@ mod tests {
         let store = Arc::new(MemoryStore::new());
         let seen = Arc::new(Mutex::new(Vec::new()));
         let (vault_store, seen_for_builder) = (Arc::clone(&store), Arc::clone(&seen));
+        let flag_dir = tempfile::tempdir().unwrap();
+        let flag = flag_dir
+            .path()
+            .join("state")
+            .join(kellu_core::switch::FLAG_FILE);
         let services = Services {
             vault: Box::new(move || Ok(Vault::new(Arc::clone(&vault_store) as Arc<_>))),
             read_secret: Box::new(move |_, _| Ok(SecretString::from(typed.to_owned()))),
@@ -479,11 +520,13 @@ mod tests {
             theme: Box::new(|| Theme::at(kellu_frontends::theme::Level::Ascii)),
             interactive: Box::new(|| false),
             home: Box::new(|| Ok(std::path::PathBuf::from("/nonexistent/kellu-home"))),
+            ai_flag: Box::new(move || Ok(flag.clone())),
         };
         Harness {
             store,
             seen,
             services,
+            flag_dir,
         }
     }
 
@@ -678,6 +721,135 @@ mod tests {
                 .is_none()
         );
         assert!(err.contains("hover and completion are off"), "{err}");
+    }
+
+    fn flag_of(h: &Harness) -> std::path::PathBuf {
+        h.flag_dir
+            .path()
+            .join("state")
+            .join(kellu_core::switch::FLAG_FILE)
+    }
+
+    /// A loader for a user configuration with `text` over the defaults.
+    fn user_config(h: &Harness, text: &str) -> Box<dyn Fn() -> kellu_common::Result<Config>> {
+        use std::os::unix::fs::PermissionsExt;
+        let path = h.flag_dir.path().join("config.toml");
+        std::fs::write(&path, text).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        Box::new(move || config::load_config(Some(&path)))
+    }
+
+    #[test]
+    fn ai_off_and_on_flip_the_flag_file_and_status_follows() {
+        let h = harness(&[], "x");
+        let (code, out, _) = run_args(&h, &["ai", "status"]);
+        assert_eq!(code, EXIT_OK);
+        assert!(out.contains("AI: on"), "{out}");
+
+        let (code, out, err) = run_args(&h, &["ai", "off"]);
+        assert_eq!(code, EXIT_OK, "{err}");
+        assert!(out.contains("nothing is sent"), "{out}");
+        assert!(flag_of(&h).exists());
+        let (_, out, _) = run_args(&h, &["ai", "status"]);
+        assert!(out.contains("AI: off"), "{out}");
+        assert!(out.contains("kellu ai on"), "{out}");
+
+        let (code, out, _) = run_args(&h, &["ai", "on"]);
+        assert_eq!(code, EXIT_OK);
+        assert!(out.contains("on again"), "{out}");
+        assert!(!flag_of(&h).exists());
+        assert!(run_args(&h, &["ai", "status"]).1.contains("AI: on"));
+    }
+
+    #[test]
+    fn the_flag_file_and_its_directory_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let h = harness(&[], "x");
+        run_args(&h, &["ai", "off"]);
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&flag_of(&h)), 0o600);
+        assert_eq!(mode(flag_of(&h).parent().unwrap()), 0o700);
+    }
+
+    #[test]
+    fn ai_off_twice_and_on_twice_are_harmless() {
+        let h = harness(&[], "x");
+        assert_eq!(run_args(&h, &["ai", "off"]).0, EXIT_OK);
+        assert_eq!(run_args(&h, &["ai", "off"]).0, EXIT_OK);
+        assert_eq!(run_args(&h, &["ai", "on"]).0, EXIT_OK);
+        let (code, out, _) = run_args(&h, &["ai", "on"]);
+        assert_eq!(code, EXIT_OK);
+        assert!(out.contains("already on"), "{out}");
+    }
+
+    #[test]
+    fn ai_off_refuses_to_follow_a_symlink_in_place_of_the_flag() {
+        let h = harness(&[], "x");
+        let flag = flag_of(&h);
+        std::fs::create_dir_all(flag.parent().unwrap()).unwrap();
+        std::os::unix::fs::symlink(h.flag_dir.path().join("elsewhere"), &flag).unwrap();
+        let (code, _, err) = run_args(&h, &["ai", "off"]);
+        assert_eq!(code, EXIT_ERROR);
+        assert!(err.contains("symlink"), "{err}");
+        assert!(
+            !h.flag_dir.path().join("elsewhere").exists(),
+            "nothing was created through the link"
+        );
+    }
+
+    #[test]
+    fn ai_off_and_on_work_with_a_broken_configuration() {
+        let mut h = harness(&[], "x");
+        h.services.load = Box::new(|| Err(kellu_common::KelluError::config("broken")));
+        assert_eq!(run_args(&h, &["ai", "off"]).0, EXIT_OK);
+        assert!(flag_of(&h).exists());
+        assert_eq!(run_args(&h, &["ai", "on"]).0, EXIT_OK);
+        assert_eq!(run_args(&h, &["ai", "status"]).0, EXIT_ERROR);
+    }
+
+    #[test]
+    fn status_lists_what_the_configuration_switches_off_and_on_reminds_you_of_it() {
+        let mut h = harness(&[], "x");
+        h.services.load = user_config(
+            &h,
+            "[ai]\nenabled = false\ndisabled_languages = [\"markdown\"]\n\
+             disabled_globs = [\"notes/**\"]\n",
+        );
+        let (_, out, _) = run_args(&h, &["ai", "status"]);
+        assert!(out.contains("AI: off"), "{out}");
+        assert!(out.contains("[ai] enabled = false"), "{out}");
+        assert!(out.contains("off for languages: markdown"), "{out}");
+        assert!(out.contains("off for files: notes/**"), "{out}");
+        let (code, out, _) = run_args(&h, &["ai", "on"]);
+        assert_eq!(code, EXIT_OK);
+        assert!(out.contains("still keeps it off"), "{out}");
+    }
+
+    #[test]
+    fn lsp_does_not_offer_features_when_the_configuration_switches_the_ai_off() {
+        let init = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#;
+        let capabilities = |config: &str| {
+            let mut h = harness(&[], "x");
+            h.services.load = user_config(&h, config);
+            let mut wire = frame(init);
+            wire.extend(frame(r#"{"jsonrpc":"2.0","id":2,"method":"shutdown"}"#));
+            wire.extend(frame(r#"{"jsonrpc":"2.0","method":"exit"}"#));
+            h.services.stdin = Box::new(move || Box::new(std::io::Cursor::new(wire.clone())));
+            let (code, out, err) = run_args(&h, &["lsp"]);
+            assert_eq!(code, EXIT_OK, "{err}");
+            let first = kellu_frontends::lsp::transport::read_message(&mut std::io::Cursor::new(
+                out.into_bytes(),
+            ))
+            .unwrap()
+            .unwrap();
+            (first["result"]["capabilities"].clone(), err)
+        };
+        let (on, _) = capabilities("[lsp]\nhover = true\ncompletion = true\n");
+        assert!(on.get("hoverProvider").is_some() && on.get("completionProvider").is_some());
+        let (off, err) =
+            capabilities("[lsp]\nhover = true\ncompletion = true\n[ai]\nenabled = false\n");
+        assert!(off.get("hoverProvider").is_none() && off.get("completionProvider").is_none());
+        assert!(err.contains("the AI is off"), "{err}");
     }
 
     #[test]

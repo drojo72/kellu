@@ -18,6 +18,10 @@ pub enum KelluError {
     /// A session log was used incorrectly (not started, already ended, bad entry kind).
     #[error("{0}")]
     Session(String),
+    /// The AI switch is off for this request, so nothing was sent to a model. This is a decision,
+    /// not a failure: an editor front end stays quiet and answers with nothing.
+    #[error("{0}")]
+    AiOff(String),
     /// The request does not fit the token budget even after compaction. Nothing was sent: a
     /// truncated task invites an invented answer, so the request is refused instead.
     #[error("{0}")]
@@ -82,6 +86,11 @@ impl KelluError {
     /// Build a [`KelluError::Session`].
     pub fn session(message: impl Into<String>) -> Self {
         Self::Session(message.into())
+    }
+
+    /// Build a [`KelluError::AiOff`].
+    pub fn ai_off(message: impl Into<String>) -> Self {
+        Self::AiOff(message.into())
     }
 
     /// Build a [`KelluError::PromptTooLarge`].

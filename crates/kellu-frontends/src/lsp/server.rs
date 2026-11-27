@@ -6,6 +6,7 @@ use std::fs;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
+use kellu_common::KelluError;
 use kellu_common::text::strip_control_chars;
 use kellu_core::assist::{Assistant, Snippet};
 use kellu_security::{DenyGlobs, Scope};
@@ -247,13 +248,15 @@ impl<'a> Server<'a> {
         // Settings from the project (`.kateproject`) are untrusted: they can switch a feature off,
         // never on.
         let options = params.pointer("/initializationOptions/kellu");
-        let allowed = |name: &str, configured: bool| {
-            configured
-                && options
-                    .and_then(|o| o.get(name))
-                    .and_then(Value::as_bool)
-                    .unwrap_or(true)
+        let option = |name: &str| {
+            options
+                .and_then(|o| o.get(name))
+                .and_then(Value::as_bool)
+                .unwrap_or(true)
         };
+        // `"ai": false` switches both features off for the project; there is no way to switch on.
+        let ai = option("ai");
+        let allowed = |name: &str, configured: bool| configured && ai && option(name);
         self.features = Features {
             hover: allowed("hover", self.configured.hover),
             completion: allowed("completion", self.configured.completion),
@@ -404,7 +407,7 @@ impl<'a> Server<'a> {
     /// The document, its byte offset and the identifier, for a position request that is allowed.
     ///
     /// The error says why not, for the private log: an editor sees only an empty answer.
-    fn target(&self, params: &Value) -> Result<(&Document, String, usize), String> {
+    fn target(&self, params: &Value) -> Result<(&Document, String, usize, PathBuf), String> {
         let uri = params
             .pointer("/textDocument/uri")
             .and_then(Value::as_str)
@@ -418,18 +421,18 @@ impl<'a> Server<'a> {
             .and_then(Value::as_u64)
             .ok_or("the request has no valid position")?;
         // The document is checked again now: the file may have been replaced by a link since.
-        if self.permitted(uri).is_none() {
+        let Some(relative) = self.permitted(uri) else {
             return Err(format!(
                 "{uri} was refused: it is outside the project, denied, a symlink, or in no project \
                  (a directory with .git, Cargo.toml, ... below the home directory)"
             ));
-        }
+        };
         let document = self.documents.get(uri).ok_or_else(|| {
             format!("{uri} is not open or was not kept (too large, or too many open)")
         })?;
         let offset = offset_at(&document.text, line, character)
             .ok_or_else(|| format!("the position is past the end of {uri}"))?;
-        Ok((document, uri.to_owned(), offset))
+        Ok((document, uri.to_owned(), offset, relative))
     }
 
     /// Write `reason` to the private log once.
@@ -447,7 +450,7 @@ impl<'a> Server<'a> {
     }
 
     fn hover(&mut self, params: &Value) -> Value {
-        let (document, uri, offset) = match self.target(params) {
+        let (document, uri, offset, relative) = match self.target(params) {
             Ok(found) => found,
             Err(reason) => {
                 self.report(format!("hover: {reason}"));
@@ -466,6 +469,7 @@ impl<'a> Server<'a> {
             language: document.language.as_deref(),
             before: &document.text[..start],
             after: &document.text[end..],
+            path: Some(&relative),
         };
         let focus = &document.text[start..end];
         let result = match self.assistant.explain(&snippet, focus) {
@@ -487,6 +491,12 @@ impl<'a> Server<'a> {
                 ));
                 None
             }
+            // The AI switch is off: a decision, not a failure. Say nothing, remember nothing (so
+            // turning it on again works at once) and answer with no data.
+            Err(KelluError::AiOff(reason)) => {
+                log::debug!("lsp: hover: {reason}");
+                return Value::Null;
+            }
             Err(error) => {
                 self.report(format!(
                     "hover: the model request failed: {}",
@@ -501,7 +511,7 @@ impl<'a> Server<'a> {
 
     fn completion(&mut self, params: &Value) -> Value {
         let empty = || json!({"isIncomplete": false, "items": []});
-        let (document, uri, offset) = match self.target(params) {
+        let (document, uri, offset, relative) = match self.target(params) {
             Ok(found) => found,
             Err(reason) => {
                 self.report(format!("completion: {reason}"));
@@ -516,6 +526,7 @@ impl<'a> Server<'a> {
             language: document.language.as_deref(),
             before: &document.text[..offset],
             after: &document.text[offset..],
+            path: Some(&relative),
         };
         let (line, character) = position_at(&document.text, offset);
         let (word_start, _) = word_at(&document.text, offset);
@@ -553,6 +564,10 @@ impl<'a> Server<'a> {
                     "completion: the model returned an empty answer for {uri}"
                 ));
                 None
+            }
+            Err(KelluError::AiOff(reason)) => {
+                log::debug!("lsp: completion: {reason}");
+                return empty();
             }
             Err(error) => {
                 self.report(format!(

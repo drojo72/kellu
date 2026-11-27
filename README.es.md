@@ -138,7 +138,7 @@ Los crates se añaden **cuando empieza su hito**, no antes. Hoy existen `kellu-c
 
 ## Inicio rápido
 
-> Los comandos describen la **interfaz objetivo** y pueden cambiar antes de 0.1.0. Hoy funcionan `kellu --version`, `kellu doctor`, `kellu config path|check|show`, `kellu keys list|set|rm|cleanup-legacy`, `kellu providers test`, `kellu tools`, `kellu chat` (o `kellu` solo en una terminal) y `kellu lsp`.
+> Los comandos describen la **interfaz objetivo** y pueden cambiar antes de 0.1.0. Hoy funcionan `kellu --version`, `kellu doctor`, `kellu config path|check|show`, `kellu keys list|set|rm|cleanup-legacy`, `kellu providers test`, `kellu ai on|off|status`, `kellu tools`, `kellu chat` (o `kellu` solo en una terminal) y `kellu lsp`.
 
 Requisitos (Linux primero): una toolchain de Rust para compilar desde el código fuente, `libsecret-tools` (`secret-tool`) y `bubblewrap`. En Debian o Ubuntu:
 
@@ -164,6 +164,8 @@ kellu keys set openrouter    # el secreto se lee por stdin (oculto en terminal),
 kellu keys list              # nombres y niveles, nunca valores
 kellu providers test         # una petición mínima por proveedor: endpoint, modelo y clave
 kellu chat                   # chat en terminal (`kellu` solo hace lo mismo en una terminal)
+kellu ai off                 # nada se envía a ningún modelo hasta `kellu ai on` (sin reiniciar)
+kellu ai status              # si la IA está activa ahora y, si no, por qué
 kellu tools                  # las herramientas y el riesgo de cada una
 ```
 
@@ -195,6 +197,8 @@ Hover y completado vienen **desactivados**: Kate los pide por su cuenta (una pau
 hover = true
 completion = true
 ```
+
+**El interruptor de IA.** `kellu ai off` detiene de inmediato todo lo que iría a un modelo, incluso en un Kate que ya está abierto; `kellu ai on` lo deshace. Para algo más duradero, `config.toml` tiene una sección `[ai]`: `enabled = false` es el interruptor general, `disabled_languages = ["markdown"]` la apaga para esos ids de lenguaje y `disabled_globs = ["notes/**"]` para los archivos cuya ruta dentro del proyecto coincida (misma sintaxis que las reglas de denegación). Un proyecto puede apagar la IA para sí mismo con `"kellu": {"ai": false}` en su configuración de Kate, nunca encenderla. Con la IA apagada, hover y completado responden simplemente con nada.
 
 El archivo debe estar en un proyecto (un directorio `.git`, `Cargo.toml` o similar bajo tu directorio personal); Kate manda tu directorio personal como raíz cuando no encuentra proyecto, y Kellu busca entonces el proyecto de cada archivo. Las respuestas son síncronas: un proveedor lento hace esperar a Kate.
 

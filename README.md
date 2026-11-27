@@ -138,7 +138,7 @@ Crates are added **when their milestone starts**, not before. Present today: `ke
 
 ## Quick start
 
-> Commands describe the **target interface** and may change before 0.1.0. Today `kellu --version`, `kellu doctor`, `kellu config path|check|show`, `kellu keys list|set|rm|cleanup-legacy`, `kellu providers test`, `kellu tools`, `kellu chat` (or plain `kellu` in a terminal) and `kellu lsp` work.
+> Commands describe the **target interface** and may change before 0.1.0. Today `kellu --version`, `kellu doctor`, `kellu config path|check|show`, `kellu keys list|set|rm|cleanup-legacy`, `kellu providers test`, `kellu ai on|off|status`, `kellu tools`, `kellu chat` (or plain `kellu` in a terminal) and `kellu lsp` work.
 
 Requirements (Linux first): a Rust toolchain to build from source, `libsecret-tools` (`secret-tool`), `bubblewrap` and `busctl` (part of systemd; only needed to list keys). On Debian/Ubuntu:
 
@@ -164,6 +164,8 @@ kellu keys set openrouter    # secret read from stdin (hidden on a terminal), st
 kellu keys list              # names and tiers, never values
 kellu providers test         # one tiny request per provider: endpoint, model and key
 kellu chat                   # terminal chat (plain `kellu` does the same in a terminal)
+kellu ai off                 # nothing is sent to any model until `kellu ai on` (no restart needed)
+kellu ai status              # is the AI on right now, and if not, why
 kellu tools                  # the tools and the risk of each
 ```
 
@@ -195,6 +197,8 @@ Hover and completion are **off by default**: Kate asks for them on its own (a mo
 hover = true
 completion = true
 ```
+
+**The AI switch.** `kellu ai off` stops everything that would go to a model, at once, even in a Kate that is already running; `kellu ai on` undoes it. For something more lasting, `config.toml` has an `[ai]` section: `enabled = false` is the master switch, `disabled_languages = ["markdown"]` switches it off for those language ids, and `disabled_globs = ["notes/**"]` for files whose path inside the project matches (same syntax as the deny rules). A project can switch the AI off for itself with `"kellu": {"ai": false}` in its Kate settings, never on. With the AI off, hover and completion simply answer with nothing.
 
 The file must live in a project (a `.git` directory, `Cargo.toml` or similar below your home directory); Kate sends your home directory as the root when it finds no project, and Kellu then looks for the project of each file. Replies are synchronous, so a slow provider makes Kate wait.
 

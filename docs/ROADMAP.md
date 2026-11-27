@@ -65,8 +65,11 @@ presets. **0.2.x tail (only if the core proves stable):** `kellu bench`, the `fa
   through; `kellu providers status` shows state.
 - **Token and cost management** (the goal: best quality per unit of cost, and as much of the
   budget as possible left for the answer). Details in the next section.
-- **AI switch:** `[ai] enabled`, with overrides per language id, per file glob and per project;
-  off means nothing leaves the machine and the server answers with local data only.
+- **AI switch (done):** `[ai] enabled`, `disabled_languages` and `disabled_globs`, a project that can
+  only switch it off (`initializationOptions.kellu.ai = false`), and `kellu ai on|off|status`, which
+  creates or removes a flag file that every request checks (no editor restart). Off means nothing
+  leaves the machine; the server answers with no data (there is no local data to answer with yet,
+  that is 0.3.0).
 - **LSP robustness:** a worker thread for model calls, `$/cancelRequest`, a per-request timeout,
   and a visible message when the model fails.
 - Documents: SECURITY (catalog responses are untrusted data: names are sanitized, never executed

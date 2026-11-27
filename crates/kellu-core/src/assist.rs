@@ -6,6 +6,7 @@
 //! *whether* a file may be used at all (deny globs, scope); this module never sees a path.
 
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use kellu_common::KelluError;
@@ -15,6 +16,7 @@ use kellu_providers::types::{ChatRequest, ChatResponse, Message};
 use crate::cache::{AnswerCache, CacheSettings, key_for};
 use crate::plan::{collapse_blank_runs, estimate_tokens, narrow_windows};
 use crate::router::{Router, RouterStream, TaskKind};
+use crate::switch::AiSwitch;
 
 /// Text redacted around the cursor before the final window is cut. Redacting only the window
 /// would let a secret that straddles its edge (or a private key whose header was cut off) through
@@ -73,6 +75,9 @@ pub struct Snippet<'a> {
     pub before: &'a str,
     /// Everything after the cursor.
     pub after: &'a str,
+    /// The document's path relative to its project, if known. Only the AI switch reads it, to
+    /// match `[ai] disabled_globs`; it is never sent to a model.
+    pub path: Option<&'a Path>,
 }
 
 const TAG: &str = "kellu-code";
@@ -88,6 +93,7 @@ pub struct Assistant {
     redactor: Arc<dyn Redactor>,
     limits: Limits,
     cache: Mutex<AnswerCache>,
+    switch: AiSwitch,
 }
 
 impl std::fmt::Debug for Assistant {
@@ -108,6 +114,7 @@ impl Assistant {
             redactor,
             limits: Limits::default(),
             cache: Mutex::new(cache),
+            switch: AiSwitch::on(),
         }
     }
 
@@ -125,6 +132,13 @@ impl Assistant {
         self
     }
 
+    /// Replace the AI switch. Every request meets it first, before the cache and the planner.
+    #[must_use]
+    pub fn with_switch(mut self, switch: AiSwitch) -> Self {
+        self.switch = switch;
+        self
+    }
+
     /// Forget every cached answer.
     pub fn clear_cache(&self) {
         if let Ok(mut cache) = self.cache.lock() {
@@ -137,9 +151,11 @@ impl Assistant {
     /// A repeated request is answered from the cache without calling a provider.
     ///
     /// # Errors
+    /// [`KelluError::AiOff`] when the AI switch is off for this document (nothing is sent);
     /// [`KelluError::PromptTooLarge`] when the text does not fit the token budget (nothing is
     /// sent); otherwise, every provider failed.
     pub fn explain(&self, snippet: &Snippet<'_>, focus: &str) -> Result<String, KelluError> {
+        self.switch.check(snippet.language, snippet.path)?;
         let focus = self.clean_for_model(&last_chars(focus, self.limits.focus));
         let head = format!(
             "Explain `{focus}` as used in the code below, in at most four short sentences. \
@@ -155,9 +171,11 @@ impl Assistant {
     /// A repeated request is answered from the cache without calling a provider.
     ///
     /// # Errors
+    /// [`KelluError::AiOff`] when the AI switch is off for this document (nothing is sent);
     /// [`KelluError::PromptTooLarge`] when the text does not fit the token budget (nothing is
     /// sent); otherwise, every provider failed.
     pub fn complete(&self, snippet: &Snippet<'_>) -> Result<String, KelluError> {
+        self.switch.check(snippet.language, snippet.path)?;
         let head = "Continue the code at the cursor, between the text before and after it. \
                     Reply with only the code to insert: no explanation, no markdown fences, \
                     and do not repeat the surrounding text.";
@@ -175,9 +193,11 @@ impl Assistant {
     /// the newest message is always kept, and refused if it alone does not fit.
     ///
     /// # Errors
-    /// The conversation is empty, or [`KelluError::PromptTooLarge`] when even the newest message
-    /// does not fit the token budget (nothing is sent).
+    /// [`KelluError::AiOff`] when the AI switch is off; the conversation is empty; or
+    /// [`KelluError::PromptTooLarge`] when even the newest message does not fit the token budget
+    /// (nothing is sent).
     pub fn chat(&self, history: &[Message]) -> Result<RouterStream<'_>, KelluError> {
+        self.switch.check(None, None)?;
         let mut kept: Vec<Message> = Vec::new();
         let mut budget = self.limits.history;
         for message in history.iter().rev() {

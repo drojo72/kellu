@@ -812,3 +812,125 @@ fn a_valid_client_root_is_not_widened_by_other_projects() {
     assert_eq!(hover(&mut server, &file, 0, 4), Value::Null);
     assert_eq!(probe.calls(), 0);
 }
+
+// ------------------------------------------------------------------------ AI switch ----
+
+use kellu_core::config::AiConfig;
+use kellu_core::switch::{AiSwitch, FLAG_FILE};
+
+fn ai_config(languages: &[&str], globs: &[&str]) -> AiConfig {
+    AiConfig {
+        enabled: true,
+        disabled_languages: languages.iter().map(|s| (*s).to_owned()).collect(),
+        disabled_globs: globs.iter().map(|s| (*s).to_owned()).collect(),
+    }
+}
+
+fn open_as(server: &mut Server<'_>, path: &Path, text: &str, language: &str) {
+    send(
+        server,
+        &json!({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":
+            {"uri": uri(path), "languageId": language, "version": 1, "text": text}}}),
+    );
+}
+
+#[test]
+fn with_the_ai_off_the_server_answers_with_no_data_and_calls_nothing() {
+    let d = dirs();
+    let flag = d.home.join(FLAG_FILE);
+    let (assistant, probe) = common::assistant("It is the entry point.");
+    let switch = AiSwitch::from_config(&ai_config(&[], &[]), Some(flag.clone())).unwrap();
+    let assistant = assistant.with_switch(switch);
+    let mut server = Server::new(&assistant, BOTH, d.home.clone());
+    initialize(&mut server, &d.proj, None);
+    let file = d.proj.join("src/main.rs");
+    let text = "fn main() {\n    helper();\n}\n";
+    fs::write(&file, text).unwrap();
+    open(&mut server, &file, text, 1);
+
+    fs::write(&flag, "").unwrap();
+    assert_eq!(hover(&mut server, &file, 1, 6), Value::Null);
+    let completion = complete(&mut server, &file, 1, 12);
+    assert_eq!(completion["items"], json!([]));
+    assert_eq!(probe.calls(), 0, "nothing was sent while it was off");
+
+    // Turning it on again takes effect at once, for the same document version: the empty answer
+    // given while it was off was not remembered.
+    fs::remove_file(&flag).unwrap();
+    let result = hover(&mut server, &file, 1, 6);
+    assert!(
+        result["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("entry point")
+    );
+    assert_eq!(probe.calls(), 1);
+}
+
+#[test]
+fn a_disabled_language_gets_no_help_and_other_languages_still_do() {
+    let d = dirs();
+    let (assistant, probe) = common::assistant("An answer.");
+    let switch = AiSwitch::from_config(&ai_config(&["markdown"], &[]), None).unwrap();
+    let assistant = assistant.with_switch(switch);
+    let mut server = Server::new(&assistant, BOTH, d.home.clone());
+    initialize(&mut server, &d.proj, None);
+    let notes = d.proj.join("src/notes.md");
+    fs::write(&notes, "# title word\n").unwrap();
+    open_as(&mut server, &notes, "# title word\n", "markdown");
+    assert_eq!(hover(&mut server, &notes, 0, 3), Value::Null);
+    assert_eq!(probe.calls(), 0);
+
+    let code = d.proj.join("src/main.rs");
+    fs::write(&code, "fn main() {}\n").unwrap();
+    open(&mut server, &code, "fn main() {}\n", 1);
+    assert!(hover(&mut server, &code, 0, 4)["contents"].is_object());
+    assert_eq!(probe.calls(), 1);
+}
+
+#[test]
+fn a_disabled_glob_is_matched_against_the_path_inside_the_project() {
+    let d = dirs();
+    let (assistant, probe) = common::assistant("An answer.");
+    let switch = AiSwitch::from_config(&ai_config(&[], &["src/private/**"]), None).unwrap();
+    let assistant = assistant.with_switch(switch);
+    let mut server = Server::new(&assistant, BOTH, d.home.clone());
+    initialize(&mut server, &d.proj, None);
+    fs::create_dir_all(d.proj.join("src/private")).unwrap();
+    let private = d.proj.join("src/private/plan.rs");
+    fs::write(&private, "fn plan() {}\n").unwrap();
+    open(&mut server, &private, "fn plan() {}\n", 1);
+    assert_eq!(hover(&mut server, &private, 0, 4), Value::Null);
+    assert_eq!(complete(&mut server, &private, 0, 13)["items"], json!([]));
+    assert_eq!(probe.calls(), 0);
+
+    let public = d.proj.join("src/lib.rs");
+    fs::write(&public, "fn open() {}\n").unwrap();
+    open(&mut server, &public, "fn open() {}\n", 1);
+    assert!(hover(&mut server, &public, 0, 4)["contents"].is_object());
+    assert_eq!(probe.calls(), 1);
+}
+
+#[test]
+fn a_project_can_switch_the_ai_off_for_itself_but_never_on() {
+    let d = dirs();
+    let (assistant, _) = common::assistant("x");
+    let capabilities = |features: Features, options: Value| {
+        let mut server = Server::new(&assistant, features, d.home.clone());
+        initialize(&mut server, &d.proj, Some(options))["result"]["capabilities"].clone()
+    };
+    let off = capabilities(BOTH, json!({"kellu": {"ai": false}}));
+    assert!(off.get("hoverProvider").is_none() && off.get("completionProvider").is_none());
+    let untouched = capabilities(BOTH, json!({"kellu": {"ai": true}}));
+    assert!(untouched.get("hoverProvider").is_some());
+    let forced = capabilities(NONE, json!({"kellu": {"ai": true}}));
+    assert!(
+        forced.get("hoverProvider").is_none() && forced.get("completionProvider").is_none(),
+        "the project cannot turn on what the configuration left off"
+    );
+    let junk = capabilities(BOTH, json!({"kellu": {"ai": "no"}}));
+    assert!(
+        junk.get("hoverProvider").is_some(),
+        "a non-boolean is ignored"
+    );
+}

@@ -1,5 +1,6 @@
 //! `kellu` binary: command-line entry point. Logic lives in [`cli`] so it can be tested.
 
+mod ai_cmd;
 mod cli;
 mod doctor;
 mod frontends_cmd;

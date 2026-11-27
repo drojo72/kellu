@@ -40,6 +40,7 @@ const TOP_KEYS: &[&str] = &[
     "sessions",
     "sandbox",
     "lsp",
+    "ai",
 ];
 const PROVIDER_KEYS: &[&str] = &["kind", "base_url", "model", "timeout_s", "keyring_name"];
 const ROUTE_KEYS: &[&str] = &["primary", "backup"];
@@ -48,6 +49,9 @@ const LOGGING_KEYS: &[&str] = &["level", "max_bytes", "backups"];
 const SESSIONS_KEYS: &[&str] = &["enabled", "max_entry_chars"];
 const SANDBOX_KEYS: &[&str] = &["require_patched_bwrap"];
 const LSP_KEYS: &[&str] = &["hover", "completion"];
+const AI_KEYS: &[&str] = &["enabled", "disabled_languages", "disabled_globs"];
+const MAX_AI_ENTRIES: usize = 64;
+const MAX_LANGUAGE_LEN: usize = 30;
 
 const SECRET_KEYS: &[&str] = &[
     "api_key",
@@ -122,6 +126,18 @@ pub struct LspConfig {
     pub completion: bool,
 }
 
+/// The AI switch: when and where code may be sent to a model at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AiConfig {
+    /// Master switch. Off means nothing is ever sent.
+    pub enabled: bool,
+    /// Language ids (lowercase) for which nothing is sent.
+    pub disabled_languages: Vec<String>,
+    /// Globs, relative to the project root, for which nothing is sent. Same syntax as the deny
+    /// rules, which always apply as well.
+    pub disabled_globs: Vec<String>,
+}
+
 /// Validated, immutable configuration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -133,6 +149,7 @@ pub struct Config {
     sessions: SessionsConfig,
     sandbox: SandboxConfig,
     lsp: LspConfig,
+    ai: AiConfig,
     source: Option<PathBuf>,
 }
 
@@ -183,6 +200,12 @@ impl Config {
     #[must_use]
     pub fn lsp(&self) -> &LspConfig {
         &self.lsp
+    }
+
+    /// The AI switch settings.
+    #[must_use]
+    pub fn ai(&self) -> &AiConfig {
+        &self.ai
     }
 
     /// The user file that was applied, if there was one.
@@ -316,6 +339,66 @@ fn get_bool(table: &Table, key: &str, location: &str) -> Result<bool> {
             "expected true or false",
         )),
     }
+}
+
+/// A list of strings, at most [`MAX_AI_ENTRIES`] long. A missing key is an empty list.
+fn get_string_list(table: &Table, key: &str, location: &str) -> Result<Vec<String>> {
+    let path = format!("{location}.{key}");
+    let items = match table.get(key) {
+        None => return Ok(Vec::new()),
+        Some(Value::Array(items)) => items,
+        Some(_) => return Err(error_at(&path, "expected a list of strings")),
+    };
+    if items.len() > MAX_AI_ENTRIES {
+        return Err(error_at(&path, format!("at most {MAX_AI_ENTRIES} entries")));
+    }
+    items
+        .iter()
+        .map(|item| item.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()
+        .ok_or_else(|| error_at(&path, "expected a list of strings"))
+}
+
+/// A language id as editors report it: a short ASCII word.
+fn is_valid_language(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= MAX_LANGUAGE_LEN
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'#' | b'.' | b'_'))
+}
+
+fn parse_ai(table: &Table) -> Result<AiConfig> {
+    check_keys(table, AI_KEYS, "ai")?;
+    let disabled_languages = get_string_list(table, "disabled_languages", "ai")?
+        .into_iter()
+        .map(|id| {
+            if is_valid_language(&id) {
+                Ok(id.to_ascii_lowercase())
+            } else {
+                Err(error_at(
+                    "ai.disabled_languages",
+                    format!(
+                        "`{}` is not a language id (a short word such as `rust`)",
+                        show(&id)
+                    ),
+                ))
+            }
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let disabled_globs = get_string_list(table, "disabled_globs", "ai")?;
+    // The same validation as the deny rules: relative, no `..`, no backslash.
+    kellu_security::DenyGlobs::with_user_patterns(&disabled_globs).map_err(|_| {
+        error_at(
+            "ai.disabled_globs",
+            "expected relative globs (no leading `/`, no `..`, no backslash, at most 128 characters)",
+        )
+    })?;
+    Ok(AiConfig {
+        enabled: get_bool(table, "enabled", "ai")?,
+        disabled_languages,
+        disabled_globs,
+    })
 }
 
 /// `^[a-z][a-z0-9_-]{0,31}$`
@@ -521,6 +604,8 @@ pub fn parse_config(
         completion: get_bool(lsp_table, "completion", "lsp")?,
     };
 
+    let ai = parse_ai(section(&merged, "ai")?.unwrap_or(&empty))?;
+
     Ok(Config {
         providers,
         routing,
@@ -530,6 +615,7 @@ pub fn parse_config(
         sessions,
         sandbox,
         lsp,
+        ai,
         source,
     })
 }
@@ -772,6 +858,62 @@ mod tests {
             message(with("[lsp]\nauto_apply = true\n")).contains("lsp: unknown key(s): auto_apply")
         );
         assert!(message(with("[lsp]\nhover = \"yes\"\n")).contains("lsp.hover"));
+    }
+
+    #[test]
+    fn the_ai_switch_is_on_by_default_and_the_section_is_strict() {
+        let config = with("").unwrap();
+        assert_eq!(
+            config.ai(),
+            &AiConfig {
+                enabled: true,
+                disabled_languages: Vec::new(),
+                disabled_globs: Vec::new(),
+            }
+        );
+        let config = with("[ai]\nenabled = false\n").unwrap();
+        assert!(!config.ai().enabled);
+        assert!(message(with("[ai]\nmode = \"x\"\n")).contains("ai: unknown key(s): mode"));
+        assert!(message(with("[ai]\nenabled = \"no\"\n")).contains("ai.enabled"));
+    }
+
+    #[test]
+    fn disabled_languages_are_normalized_and_validated() {
+        let config = with("[ai]\ndisabled_languages = [\"Markdown\", \"c++\"]\n").unwrap();
+        assert_eq!(config.ai().disabled_languages, ["markdown", "c++"]);
+        for bad in ["\"\"", "\"a b\"", "\"x\\u001b[31m\"", "42"] {
+            let text = format!("[ai]\ndisabled_languages = [{bad}]\n");
+            assert!(
+                message(with(&text)).contains("ai.disabled_languages"),
+                "{bad} should be refused"
+            );
+        }
+        let too_long = format!("\"{}\"", "a".repeat(31));
+        assert!(
+            message(with(&format!("[ai]\ndisabled_languages = [{too_long}]\n")))
+                .contains("ai.disabled_languages")
+        );
+        assert!(message(with("[ai]\ndisabled_languages = \"rust\"\n")).contains("list of strings"));
+    }
+
+    #[test]
+    fn disabled_globs_follow_the_deny_rules_syntax() {
+        let config = with("[ai]\ndisabled_globs = [\"notes/**\", \"*.md\"]\n").unwrap();
+        assert_eq!(config.ai().disabled_globs, ["notes/**", "*.md"]);
+        for bad in ["\"/etc/*\"", "\"../x\"", "\"a\\\\b\"", "\"\"", "7"] {
+            let text = format!("[ai]\ndisabled_globs = [{bad}]\n");
+            assert!(
+                message(with(&text)).contains("ai.disabled_globs"),
+                "{bad} should be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn the_ai_lists_are_capped() {
+        let many: Vec<String> = (0..65).map(|n| format!("\"l{n}\"")).collect();
+        let text = format!("[ai]\ndisabled_languages = [{}]\n", many.join(","));
+        assert!(message(with(&text)).contains("at most 64"));
     }
 
     #[test]

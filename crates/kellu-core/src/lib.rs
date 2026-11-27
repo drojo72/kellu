@@ -9,3 +9,4 @@ pub mod log;
 pub mod plan;
 pub mod router;
 pub mod session;
+pub mod switch;

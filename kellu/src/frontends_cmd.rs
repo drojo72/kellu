@@ -12,6 +12,7 @@ use kellu_core::config::Config;
 use kellu_core::log::{configure_logging, default_redactor};
 use kellu_core::router::{Router, monotonic_clock};
 use kellu_core::session::SessionLog;
+use kellu_core::switch::AiSwitch;
 use kellu_frontends::lsp::{Features, Server};
 use kellu_frontends::repl::Repl;
 use kellu_providers::KeyLookup;
@@ -48,7 +49,14 @@ fn assistant(config: &Config, services: &Services, err: &mut dyn Write) -> Assis
         })
         .collect::<BTreeMap<_, _>>();
     let router = Router::new(config.clone(), providers, monotonic_clock());
-    Assistant::new(router, Arc::new(PatternRedactor::new()))
+    // The flag file of `kellu ai off` is looked at on every request. If the switch cannot be built
+    // it fails closed: nothing is sent.
+    let switch =
+        AiSwitch::from_config(config.ai(), (services.ai_flag)().ok()).unwrap_or_else(|error| {
+            say(err, &format!("error: {error}; the AI stays off"));
+            AiSwitch::closed()
+        });
+    Assistant::new(router, Arc::new(PatternRedactor::new())).with_switch(switch)
 }
 
 fn load(services: &Services, err: &mut dyn Write) -> Option<Config> {
@@ -99,11 +107,17 @@ pub fn lsp(services: &Services, out: &mut dyn Write, err: &mut dyn Write) -> u8 
         }
     };
     let assistant = assistant(&config, services, err);
+    // With the AI off in the configuration the editor is not even offered the features.
     let features = Features {
-        hover: config.lsp().hover,
-        completion: config.lsp().completion,
+        hover: config.lsp().hover && config.ai().enabled,
+        completion: config.lsp().completion && config.ai().enabled,
     };
-    if !features.hover && !features.completion {
+    if !config.ai().enabled {
+        say(
+            err,
+            "note: the AI is off ([ai] enabled = false): hover and completion are not offered",
+        );
+    } else if !features.hover && !features.completion {
         say(
             err,
             "note: hover and completion are off; turn them on under [lsp] in the configuration \

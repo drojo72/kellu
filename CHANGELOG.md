@@ -21,6 +21,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
 ### 0.2.0 (in development, branch `dev-0.2-control`)
 
 #### Added
+- **AI switch.** `[ai]` in `config.toml` (`enabled`, `disabled_languages`, `disabled_globs`, strict
+  keys, validated like the deny rules) and `kellu ai on|off|status`, which creates or removes a
+  private flag file in the state directory. `kellu-core::switch::AiSwitch` is the first check of
+  every `Assistant` request, before the cache and the planner; `KelluError::AiOff` says why. A
+  project can switch it off (`"kellu": {"ai": false}`), never on. It fails closed. In the LSP an
+  off request answers with no data and no log noise, and is not remembered, so turning the AI on
+  again works at once. `kellu config show` shows the section; `kellu lsp` does not advertise hover
+  or completion when the configuration has the AI off.
+- `Snippet::path` (the document's path inside its project; only the switch reads it).
 - `kellu-core::plan`: token budget planning with no model call. A deliberately pessimistic token
   estimate (ASCII a quarter token per character, anything else half), loss-free compaction (blank
   runs, trailing spaces; never the line being typed) and a window narrowing that shrinks both sides
