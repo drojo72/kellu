@@ -3,7 +3,9 @@
 //! filesystem unless the constructor's documentation says so.
 
 pub mod assist;
+pub mod cache;
 pub mod config;
 pub mod log;
+pub mod plan;
 pub mod router;
 pub mod session;

@@ -6,13 +6,26 @@
 //! *whether* a file may be used at all (deny globs, scope); this module never sees a path.
 
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use kellu_common::KelluError;
 use kellu_common::text::{Redactor, strip_control_chars, truncate};
 use kellu_providers::types::{ChatRequest, ChatResponse, Message};
 
+use crate::cache::{AnswerCache, CacheSettings, key_for};
+use crate::plan::{collapse_blank_runs, estimate_tokens, narrow_windows};
 use crate::router::{Router, RouterStream, TaskKind};
+
+/// Text redacted around the cursor before the final window is cut. Redacting only the window
+/// would let a secret that straddles its edge (or a private key whose header was cut off) through
+/// as an unredacted fragment, so a wide span is redacted first and the window is cut afterwards.
+const REDACT_SPAN: usize = 100_000;
+
+/// The smallest window kept on each side of the cursor when the planner narrows a prompt.
+const MIN_WINDOW: usize = 200;
+
+const CHAT_SYSTEM: &str = "You are Kellu, a coding assistant. Answer briefly and directly. Never \
+reveal or guess secrets, keys or tokens.";
 
 /// Size limits, in characters unless noted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +44,9 @@ pub struct Limits {
     pub completion_tokens: u32,
     /// Conversation kept for the REPL: the most recent messages that fit.
     pub history: usize,
+    /// The largest prompt the planner lets through, in estimated tokens. A conservative stand-in
+    /// for the effective context of the model; the model catalog will replace it per model.
+    pub prompt_tokens: u32,
 }
 
 impl Default for Limits {
@@ -43,6 +59,7 @@ impl Default for Limits {
             hover_tokens: 1024,
             completion_tokens: 1024,
             history: 24_000,
+            prompt_tokens: 4000,
         }
     }
 }
@@ -70,6 +87,7 @@ pub struct Assistant {
     router: Router,
     redactor: Arc<dyn Redactor>,
     limits: Limits,
+    cache: Mutex<AnswerCache>,
 }
 
 impl std::fmt::Debug for Assistant {
@@ -84,10 +102,12 @@ impl Assistant {
     /// An assistant over `router`; `redactor` is applied to every text that leaves the machine.
     #[must_use]
     pub fn new(router: Router, redactor: Arc<dyn Redactor>) -> Self {
+        let cache = AnswerCache::new(CacheSettings::default(), router.clock());
         Self {
             router,
             redactor,
             limits: Limits::default(),
+            cache: Mutex::new(cache),
         }
     }
 
@@ -98,47 +118,65 @@ impl Assistant {
         self
     }
 
+    /// Replace the answer cache settings (this also empties the cache).
+    #[must_use]
+    pub fn with_cache(mut self, settings: CacheSettings) -> Self {
+        self.cache = Mutex::new(AnswerCache::new(settings, self.router.clock()));
+        self
+    }
+
+    /// Forget every cached answer.
+    pub fn clear_cache(&self) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.clear();
+        }
+    }
+
     /// A short explanation of `focus` (the symbol under the cursor) in its context.
     ///
+    /// A repeated request is answered from the cache without calling a provider.
+    ///
     /// # Errors
-    /// Every provider failed.
+    /// [`KelluError::PromptTooLarge`] when the text does not fit the token budget (nothing is
+    /// sent); otherwise, every provider failed.
     pub fn explain(&self, snippet: &Snippet<'_>, focus: &str) -> Result<String, KelluError> {
         let focus = self.clean_for_model(&last_chars(focus, self.limits.focus));
-        let prompt = format!(
+        let head = format!(
             "Explain `{focus}` as used in the code below, in at most four short sentences. \
-             Plain text only, no markdown, no code blocks.\n\n{}",
-            self.fenced(snippet)
+             Plain text only, no markdown, no code blocks."
         );
+        let prompt = self.planned_prompt(&head, snippet)?;
         let request = self.request(prompt, self.limits.hover_tokens, 0.2)?;
-        let response = self.router.chat(TaskKind::Explain, &request)?;
-        let answer = self.clean_answer(&response.text);
-        note_if_empty("explain", &answer, &response);
-        Ok(answer)
+        self.ask("explain", TaskKind::Explain, &request, |text| text)
     }
 
     /// Code to insert at the cursor (possibly several lines); empty if the model had nothing.
     ///
+    /// A repeated request is answered from the cache without calling a provider.
+    ///
     /// # Errors
-    /// Every provider failed.
+    /// [`KelluError::PromptTooLarge`] when the text does not fit the token budget (nothing is
+    /// sent); otherwise, every provider failed.
     pub fn complete(&self, snippet: &Snippet<'_>) -> Result<String, KelluError> {
-        let prompt = format!(
-            "Continue the code at the cursor, between the text before and after it. Reply with \
-             only the code to insert: no explanation, no markdown fences, and do not repeat the \
-             surrounding text.\n\n{}",
-            self.fenced(snippet)
-        );
+        let head = "Continue the code at the cursor, between the text before and after it. \
+                    Reply with only the code to insert: no explanation, no markdown fences, \
+                    and do not repeat the surrounding text.";
+        let prompt = self.planned_prompt(head, snippet)?;
         let request = self.request(prompt, self.limits.completion_tokens, 0.0)?;
-        let response = self.router.chat(TaskKind::Code, &request)?;
-        let answer = strip_fence(&self.clean_answer(&response.text));
-        note_if_empty("complete", &answer, &response);
-        Ok(answer)
+        self.ask("complete", TaskKind::Code, &request, |text| {
+            strip_fence(&text)
+        })
     }
 
     /// Stream the answer to a conversation. The most recent messages that fit the history limit
     /// are kept, and every message is redacted on its way out; `history` itself is not changed.
     ///
+    /// The oldest turns go first when the conversation exceeds the history or the token budget;
+    /// the newest message is always kept, and refused if it alone does not fit.
+    ///
     /// # Errors
-    /// The conversation is empty.
+    /// The conversation is empty, or [`KelluError::PromptTooLarge`] when even the newest message
+    /// does not fit the token budget (nothing is sent).
     pub fn chat(&self, history: &[Message]) -> Result<RouterStream<'_>, KelluError> {
         let mut kept: Vec<Message> = Vec::new();
         let mut budget = self.limits.history;
@@ -154,10 +192,19 @@ impl Assistant {
             kept.push(redacted);
         }
         kept.reverse();
-        let mut messages = vec![Message::system(
-            "You are Kellu, a coding assistant. Answer briefly and directly. Never reveal or \
-             guess secrets, keys or tokens.",
-        )];
+        let tokens = |kept: &[Message]| -> u32 {
+            kept.iter().fold(estimate_tokens(CHAT_SYSTEM), |sum, m| {
+                sum.saturating_add(message_tokens(m))
+            })
+        };
+        while kept.len() > 1 && tokens(&kept) > self.limits.prompt_tokens {
+            kept.remove(0);
+        }
+        let needed = tokens(&kept);
+        if !kept.is_empty() && needed > self.limits.prompt_tokens {
+            return Err(too_large(needed, self.limits.prompt_tokens));
+        }
+        let mut messages = vec![Message::system(CHAT_SYSTEM)];
         messages.extend(kept);
         let request = ChatRequest::new(messages)
             .ok_or_else(|| KelluError::config("empty conversation"))?
@@ -171,12 +218,114 @@ impl Assistant {
         neutralize(&strip_control_chars(&self.redactor.redact(text)))
     }
 
-    fn fenced(&self, snippet: &Snippet<'_>) -> String {
+    /// The text nearest the cursor on one side, redacted. A wide span is redacted first and the
+    /// window is cut afterwards, so a secret on the edge of the window is never sent in part.
+    fn window(&self, text: &str, limit: usize, tail: bool) -> String {
+        let span = limit.max(REDACT_SPAN);
+        let raw = if tail {
+            last_chars(text, span)
+        } else {
+            first_chars(text, span)
+        };
+        let cleaned = self.clean_for_model(&raw);
+        if tail {
+            last_chars(&cleaned, limit)
+        } else {
+            first_chars(&cleaned, limit)
+        }
+    }
+
+    /// The prompt for a snippet: `head`, then the fenced code, planned to fit the token budget.
+    ///
+    /// Nothing here calls a model. If the prompt is over budget it is compacted, losing the
+    /// least first: (1) runs of blank lines and trailing spaces, (2) the code farthest from the
+    /// cursor, both sides shrinking together. If it still does not fit it is refused: a cut-off
+    /// task invites an invented answer.
+    fn planned_prompt(&self, head: &str, snippet: &Snippet<'_>) -> Result<String, KelluError> {
+        let budget = self.limits.prompt_tokens;
         let language = snippet.language.and_then(sanitize_language);
-        let before = self.clean_for_model(&last_chars(snippet.before, self.limits.before));
-        let after = self.clean_for_model(&first_chars(snippet.after, self.limits.after));
-        let header = language.map_or_else(String::new, |l| format!(" language=\"{l}\""));
-        format!("<{TAG}{header}>\n{before}<cursor/>{after}\n</{TAG}>")
+        let assemble = |before: &str, after: &str| -> String {
+            let header = language.map_or_else(String::new, |l| format!(" language=\"{l}\""));
+            format!("{head}\n\n<{TAG}{header}>\n{before}<cursor/>{after}\n</{TAG}>")
+        };
+        let cost = |prompt: &str| estimate_tokens(SYSTEM).saturating_add(estimate_tokens(prompt));
+
+        let before = self.window(snippet.before, self.limits.before, true);
+        let after = self.window(snippet.after, self.limits.after, false);
+        let prompt = assemble(&before, &after);
+        let full_cost = cost(&prompt);
+        if full_cost <= budget {
+            return Ok(prompt);
+        }
+
+        let before = collapse_blank_runs(&before);
+        let after = collapse_blank_runs(&after);
+        let prompt = assemble(&before, &after);
+        if cost(&prompt) <= budget {
+            return Ok(prompt);
+        }
+
+        let overhead = cost(&assemble("", ""));
+        let mut chars = usize::try_from(budget.saturating_sub(overhead))
+            .unwrap_or(0)
+            .saturating_mul(4);
+        let (before_len, after_len) = (before.chars().count(), after.chars().count());
+        for _ in 0..12 {
+            let Some((keep_before, keep_after)) =
+                narrow_windows(before_len, after_len, chars, MIN_WINDOW)
+            else {
+                break;
+            };
+            let prompt = assemble(
+                &last_chars(&before, keep_before),
+                &first_chars(&after, keep_after),
+            );
+            if cost(&prompt) <= budget {
+                return Ok(prompt);
+            }
+            chars -= chars / 4;
+        }
+        Err(too_large(full_cost, budget))
+    }
+
+    /// Answer from the cache, or ask the router and keep the answer. Failures and empty answers
+    /// are never cached.
+    fn ask(
+        &self,
+        name: &str,
+        task: TaskKind,
+        request: &ChatRequest,
+        finish: impl Fn(String) -> String,
+    ) -> Result<String, KelluError> {
+        let key = self.cache_key(task, request);
+        let hit = self.cache.lock().ok().and_then(|mut cache| cache.get(&key));
+        if let Some(answer) = hit {
+            log::debug!("assist: {name}: answered from the cache, no provider called");
+            return Ok(answer);
+        }
+        let response = self.router.chat(task, request)?;
+        let answer = finish(self.clean_answer(&response.text));
+        note_if_empty(name, &answer, &response);
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.put(key, &answer);
+        }
+        Ok(answer)
+    }
+
+    /// Everything that shapes the answer goes into the key; only its digest is kept.
+    fn cache_key(&self, task: TaskKind, request: &ChatRequest) -> String {
+        let route = self.router.route_fingerprint(task);
+        let sampling = format!("{:?}/{:?}", request.max_tokens, request.temperature);
+        let mut parts: Vec<&str> = vec![task.as_str(), &route, &sampling];
+        for message in &request.messages {
+            match message {
+                Message::System(text) => parts.extend(["system", text]),
+                Message::User(text) => parts.extend(["user", text]),
+                Message::Assistant { content, .. } => parts.extend(["assistant", content]),
+                Message::Tool { content, .. } => parts.extend(["tool", content]),
+            }
+        }
+        key_for(&parts)
     }
 
     fn request(
@@ -244,6 +393,20 @@ fn message_chars(message: &Message) -> usize {
         Message::User(content) | Message::Assistant { content, .. } => content.chars().count(),
         Message::System(_) | Message::Tool { .. } => 0,
     }
+}
+
+fn message_tokens(message: &Message) -> u32 {
+    match message {
+        Message::User(content) | Message::Assistant { content, .. } => estimate_tokens(content),
+        Message::System(_) | Message::Tool { .. } => 0,
+    }
+}
+
+fn too_large(needed: u32, budget: u32) -> KelluError {
+    KelluError::prompt_too_large(format!(
+        "the request needs about {needed} tokens and the budget is {budget}; nothing was sent \
+         (select less text or raise `prompt_tokens`)"
+    ))
 }
 
 fn last_user_text(history: &[Message]) -> Option<&str> {
