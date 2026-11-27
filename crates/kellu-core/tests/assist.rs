@@ -560,3 +560,95 @@ fn an_unreadable_flag_means_nothing_is_sent() {
     assert!(is_off(assistant.complete(&snippet("a", ""))));
     assert_eq!(calls(&seen), 0);
 }
+
+#[test]
+fn a_cached_answer_is_counted_as_a_hit_and_the_model_request_once() {
+    let (assistant, _seen) = build("answer");
+    let snip = snippet("let x = ", "");
+    assistant.explain(&snip, "x").unwrap();
+    assistant.explain(&snip, "x").unwrap();
+    let usage = assistant.usage();
+    assert_eq!(usage.cache_hits, 1);
+    assert_eq!(usage.total.requests, 1);
+    assert!(usage.cache_saved_tokens > 0);
+}
+
+#[test]
+fn a_refused_or_switched_off_request_counts_nothing() {
+    let (assistant, _seen) = build("answer");
+    let assistant = assistant.with_switch(AiSwitch::closed());
+    assert!(assistant.explain(&snippet("a", "b"), "a").is_err());
+    assert!(assistant.usage().is_empty());
+}
+
+/// A provider whose service counts far more prompt tokens than the planner estimates.
+struct Heavy {
+    seen: Arc<Mutex<Vec<ChatRequest>>>,
+}
+
+impl Provider for Heavy {
+    fn name(&self) -> &str {
+        "a"
+    }
+    fn supports_tools(&self) -> bool {
+        false
+    }
+    fn chat(&self, request: &ChatRequest) -> Result<ChatResponse, ProviderError> {
+        self.seen.lock().unwrap().push(request.clone());
+        let mut response = response("ok");
+        response.usage = Some(kellu_providers::Usage {
+            prompt_tokens: Some(1_000_000),
+            completion_tokens: Some(1),
+        });
+        Ok(response)
+    }
+    fn stream(&self, _request: &ChatRequest) -> EventStream {
+        Box::new(std::iter::empty())
+    }
+}
+
+#[test]
+fn the_planner_shrinks_prompts_once_the_service_reports_a_heavier_count() {
+    let user: toml::Table = USER.parse().unwrap();
+    let config = parse_config(&load_defaults().unwrap(), Some(&user), None).unwrap();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let providers = BTreeMap::from([(
+        "a".to_owned(),
+        Box::new(Heavy {
+            seen: Arc::clone(&seen),
+        }) as Box<dyn Provider>,
+    )]);
+    let router = Router::new(config, providers, monotonic_clock());
+    let assistant = Assistant::new(router, Arc::new(PatternRedactor::new())).with_limits(Limits {
+        prompt_tokens: 800,
+        ..Limits::default()
+    });
+    let user_text = |seen: &Arc<Mutex<Vec<ChatRequest>>>| match seen
+        .lock()
+        .unwrap()
+        .last()
+        .and_then(|r| r.messages.last().cloned())
+    {
+        Some(Message::User(t)) => t,
+        other => panic!("unexpected {other:?}"),
+    };
+    let text = "abcdefg ".repeat(200);
+
+    assistant.complete(&snippet(&text, "")).unwrap();
+    let first = user_text(&seen);
+    assert!(first.matches("abcdefg").count() == 200, "fits as estimated");
+
+    for i in 0..5 {
+        assistant
+            .complete(&snippet(&format!("p{i} x"), ""))
+            .unwrap();
+    }
+    assistant
+        .complete(&snippet(&format!("{text} "), ""))
+        .unwrap();
+    let later = user_text(&seen);
+    assert!(
+        later.matches("abcdefg").count() < 200,
+        "the same text is now cut down to fit the measured size"
+    );
+}

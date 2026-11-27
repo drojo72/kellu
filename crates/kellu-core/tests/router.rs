@@ -530,3 +530,157 @@ fn stream_stops_starting_providers_when_the_time_budget_is_spent() {
     assert_eq!(list[1].2, "total time budget exhausted");
     assert_eq!(h.calls("b"), 0);
 }
+
+fn counted(provider: &str, text: &str, prompt: u64, completion: u64) -> ChatOutcome {
+    let mut response = answer(provider, text).unwrap();
+    response.usage = Some(kellu_providers::Usage {
+        prompt_tokens: Some(prompt),
+        completion_tokens: Some(completion),
+    });
+    Ok(response)
+}
+
+#[test]
+fn answers_are_counted_as_the_service_reported_them() {
+    let h = harness(vec![
+        spec("a")
+            .chat(counted("a", "one", 10, 3))
+            .chat(counted("a", "two", 20, 4)),
+        spec("b"),
+        spec("c"),
+    ]);
+    assert!(h.router.usage().is_empty());
+    h.router.chat(TaskKind::General, &request()).unwrap();
+    h.router.chat(TaskKind::General, &request()).unwrap();
+    let usage = h.router.usage();
+    assert_eq!(usage.total.requests, 2);
+    assert_eq!(
+        (usage.total.prompt_tokens, usage.total.completion_tokens),
+        (30, 7)
+    );
+    assert_eq!(usage.models.len(), 1);
+    assert_eq!(usage.models[0].0, "a/m");
+}
+
+#[test]
+fn a_failed_attempt_is_not_counted_and_the_provider_that_answered_is() {
+    let h = harness(vec![
+        spec("a").chat(Err(fail("a", "rate limited", 429, true))),
+        spec("b").chat(counted("b", "ok", 7, 2)),
+        spec("c"),
+    ]);
+    h.router.chat(TaskKind::General, &request()).unwrap();
+    let usage = h.router.usage();
+    assert_eq!(usage.total.requests, 1);
+    assert_eq!(usage.models, [("b/m".to_owned(), usage.total)]);
+}
+
+#[test]
+fn a_request_that_fails_everywhere_counts_nothing() {
+    let h = harness(vec![
+        spec("a").chat(Err(fail("a", "down", 500, false))),
+        spec("b").chat(Err(fail("b", "down", 500, false))),
+        spec("c").chat(Err(fail("c", "down", 500, false))),
+    ]);
+    assert!(h.router.chat(TaskKind::General, &request()).is_err());
+    assert!(h.router.usage().is_empty());
+}
+
+#[test]
+fn an_answer_without_counts_is_flagged_not_invented() {
+    let h = harness(vec![
+        spec("a").chat(answer("a", "hi")),
+        spec("b"),
+        spec("c"),
+    ]);
+    h.router.chat(TaskKind::General, &request()).unwrap();
+    let usage = h.router.usage();
+    assert_eq!(
+        (
+            usage.total.requests,
+            usage.total.unreported,
+            usage.total.prompt_tokens
+        ),
+        (1, 1, 0)
+    );
+}
+
+#[test]
+fn a_stream_is_counted_once_when_it_finishes_and_not_when_it_breaks() {
+    let mut finished = done("a", "hello");
+    if let Ok(StreamEvent::Done(response)) = &mut finished {
+        response.usage = Some(kellu_providers::Usage {
+            prompt_tokens: Some(12),
+            completion_tokens: Some(5),
+        });
+    }
+    let h = harness(vec![
+        spec("a").stream(vec![text("hel"), finished]).stream(vec![
+            text("part"),
+            Err(fail("a", "connection lost", 0, true)),
+        ]),
+        spec("b"),
+        spec("c"),
+    ]);
+    let _: Vec<_> = h.router.stream(TaskKind::General, &request()).collect();
+    assert_eq!(h.router.usage().total.requests, 1);
+    assert_eq!(h.router.usage().total.prompt_tokens, 12);
+    let _: Vec<_> = h.router.stream(TaskKind::General, &request()).collect();
+    assert_eq!(
+        h.router.usage().total.requests,
+        1,
+        "a broken stream is not an answer"
+    );
+}
+
+#[test]
+fn the_estimate_is_calibrated_by_what_the_service_reports() {
+    let mut specs = spec("a");
+    for _ in 0..5 {
+        // "hi" is estimated at 1 token; the service says 2.
+        specs = specs.chat(counted("a", "x", 2, 1));
+    }
+    let h = harness(vec![specs, spec("b"), spec("c")]);
+    for i in 0..5 {
+        assert_eq!(
+            h.router.calibration_milli(TaskKind::General),
+            1000,
+            "after {i}"
+        );
+        h.router.chat(TaskKind::General, &request()).unwrap();
+    }
+    assert_eq!(h.router.calibration_milli(TaskKind::General), 2000);
+    assert_eq!(
+        h.router.calibration_milli(TaskKind::Code),
+        1000,
+        "another route, another model"
+    );
+}
+
+#[test]
+fn the_summary_holds_numbers_and_names_only() {
+    let h = harness(vec![
+        spec("a").chat(counted("a", "SECRET-ANSWER", 10, 3)),
+        spec("b"),
+        spec("c"),
+    ]);
+    let request = ChatRequest::new(vec![Message::user("SECRET-PROMPT")]).unwrap();
+    h.router.chat(TaskKind::General, &request).unwrap();
+    let shown = h.router.usage().lines().join("\n");
+    assert!(!shown.contains("SECRET"), "{shown}");
+}
+
+#[test]
+fn a_cache_hit_is_counted_apart_from_model_requests() {
+    let h = harness(vec![spec("a"), spec("b"), spec("c")]);
+    h.router.note_cache_hit(40);
+    let usage = h.router.usage();
+    assert_eq!(
+        (
+            usage.total.requests,
+            usage.cache_hits,
+            usage.cache_saved_tokens
+        ),
+        (0, 1, 40)
+    );
+}

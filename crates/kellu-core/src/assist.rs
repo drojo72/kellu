@@ -14,9 +14,12 @@ use kellu_common::text::{Redactor, strip_control_chars, truncate};
 use kellu_providers::types::{ChatRequest, ChatResponse, Message};
 
 use crate::cache::{AnswerCache, CacheSettings, key_for};
-use crate::plan::{collapse_blank_runs, estimate_tokens, narrow_windows};
+use crate::plan::{
+    collapse_blank_runs, estimate_request, estimate_tokens, narrow_windows, scale_tokens,
+};
 use crate::router::{Router, RouterStream, TaskKind};
 use crate::switch::AiSwitch;
+use crate::usage::UsageSnapshot;
 
 /// Text redacted around the cursor before the final window is cut. Redacting only the window
 /// would let a secret that straddles its edge (or a private key whose header was cut off) through
@@ -146,6 +149,12 @@ impl Assistant {
         }
     }
 
+    /// What this session has spent so far, as the services reported it (numbers only).
+    #[must_use]
+    pub fn usage(&self) -> UsageSnapshot {
+        self.router.usage()
+    }
+
     /// A short explanation of `focus` (the symbol under the cursor) in its context.
     ///
     /// A repeated request is answered from the cache without calling a provider.
@@ -161,7 +170,7 @@ impl Assistant {
             "Explain `{focus}` as used in the code below, in at most four short sentences. \
              Plain text only, no markdown, no code blocks."
         );
-        let prompt = self.planned_prompt(&head, snippet)?;
+        let prompt = self.planned_prompt(TaskKind::Explain, &head, snippet)?;
         let request = self.request(prompt, self.limits.hover_tokens, 0.2)?;
         self.ask("explain", TaskKind::Explain, &request, |text| text)
     }
@@ -179,7 +188,7 @@ impl Assistant {
         let head = "Continue the code at the cursor, between the text before and after it. \
                     Reply with only the code to insert: no explanation, no markdown fences, \
                     and do not repeat the surrounding text.";
-        let prompt = self.planned_prompt(head, snippet)?;
+        let prompt = self.planned_prompt(TaskKind::Code, head, snippet)?;
         let request = self.request(prompt, self.limits.completion_tokens, 0.0)?;
         self.ask("complete", TaskKind::Code, &request, |text| {
             strip_fence(&text)
@@ -212,10 +221,13 @@ impl Assistant {
             kept.push(redacted);
         }
         kept.reverse();
+        let task = last_user_text(history).map_or(TaskKind::General, crate::router::classify_task);
+        let milli = self.router.calibration_milli(task);
         let tokens = |kept: &[Message]| -> u32 {
-            kept.iter().fold(estimate_tokens(CHAT_SYSTEM), |sum, m| {
+            let raw = kept.iter().fold(estimate_tokens(CHAT_SYSTEM), |sum, m| {
                 sum.saturating_add(message_tokens(m))
-            })
+            });
+            scale_tokens(raw, milli)
         };
         while kept.len() > 1 && tokens(&kept) > self.limits.prompt_tokens {
             kept.remove(0);
@@ -229,7 +241,6 @@ impl Assistant {
         let request = ChatRequest::new(messages)
             .ok_or_else(|| KelluError::config("empty conversation"))?
             .with_temperature(0.3);
-        let task = last_user_text(history).map_or(TaskKind::General, crate::router::classify_task);
         Ok(self.router.stream(task, &request))
     }
 
@@ -261,14 +272,29 @@ impl Assistant {
     /// least first: (1) runs of blank lines and trailing spaces, (2) the code farthest from the
     /// cursor, both sides shrinking together. If it still does not fit it is refused: a cut-off
     /// task invites an invented answer.
-    fn planned_prompt(&self, head: &str, snippet: &Snippet<'_>) -> Result<String, KelluError> {
+    ///
+    /// The estimate is scaled by what this session measured for the model the route tries first
+    /// (see `usage`), so a model that counts more or fewer tokens than the rule of thumb is
+    /// planned with its own number.
+    fn planned_prompt(
+        &self,
+        task: TaskKind,
+        head: &str,
+        snippet: &Snippet<'_>,
+    ) -> Result<String, KelluError> {
         let budget = self.limits.prompt_tokens;
+        let milli = self.router.calibration_milli(task);
         let language = snippet.language.and_then(sanitize_language);
         let assemble = |before: &str, after: &str| -> String {
             let header = language.map_or_else(String::new, |l| format!(" language=\"{l}\""));
             format!("{head}\n\n<{TAG}{header}>\n{before}<cursor/>{after}\n</{TAG}>")
         };
-        let cost = |prompt: &str| estimate_tokens(SYSTEM).saturating_add(estimate_tokens(prompt));
+        let cost = |prompt: &str| {
+            scale_tokens(
+                estimate_tokens(SYSTEM).saturating_add(estimate_tokens(prompt)),
+                milli,
+            )
+        };
 
         let before = self.window(snippet.before, self.limits.before, true);
         let after = self.window(snippet.after, self.limits.after, false);
@@ -288,7 +314,9 @@ impl Assistant {
         let overhead = cost(&assemble("", ""));
         let mut chars = usize::try_from(budget.saturating_sub(overhead))
             .unwrap_or(0)
-            .saturating_mul(4);
+            .saturating_mul(4)
+            .saturating_mul(1000)
+            / usize::try_from(milli.max(1)).unwrap_or(1000);
         let (before_len, after_len) = (before.chars().count(), after.chars().count());
         for _ in 0..12 {
             let Some((keep_before, keep_after)) =
@@ -321,6 +349,7 @@ impl Assistant {
         let hit = self.cache.lock().ok().and_then(|mut cache| cache.get(&key));
         if let Some(answer) = hit {
             log::debug!("assist: {name}: answered from the cache, no provider called");
+            self.router.note_cache_hit(estimate_request(request));
             return Ok(answer);
         }
         let response = self.router.chat(task, request)?;

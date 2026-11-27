@@ -43,6 +43,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   before anything is sent. The chat drops its oldest turns for the token budget and refuses a newest
   message that alone does not fit.
 - `Router::clock` and `Router::route_fingerprint`.
+- **Token counter.** `kellu-core::usage` counts, in the `Router` (the one place every answer passes,
+  plain or streamed), the prompt and answer tokens **as the service reported them**, per
+  `provider/model` and in total, flagging answers that came back without a count. Cache hits are
+  counted apart, with the estimated prompt they did not send. Numbers only: never a prompt, an
+  answer or a key. Session memory only; the persistent ledger is the next step. `/usage` in
+  `kellu chat` shows it; `kellu lsp` prints it to stderr when the editor exits.
+- **Calibrated estimate.** The planner's pessimistic estimate is scaled per model by the measured
+  ratio of reported to estimated prompt tokens (needs 5 samples, bounded to 0.5x-3x, old samples
+  fade), so a model that counts Spanish or code differently is planned with its own number.
+  `plan::estimate_request` and `plan::scale_tokens`.
 
 #### Fixed
 - **Redaction ran after the window was cut**, so a secret straddling the edge of the window (or a
@@ -51,7 +61,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and the proje
   negative tests that fail without the fix.
 
 #### Changed
-- Workspace version is `0.2.0-dev.0`.
+- Workspace version is `0.2.0-dev.3` (the number follows the step, so a stale binary is easy to spot).
 - The LSP hover test now distinguishes the server's per-version cache from the assistant's
   exact-match cache: the same text in a new version costs no provider call.
 

@@ -10,9 +10,11 @@
 //! * A stream can fail over only **before** any text was delivered. After that, switching
 //!   providers would duplicate or contradict what the user already saw, so the error is raised.
 //! * Failure messages come from the providers and never contain secrets.
+//! * Every answer is counted here, the one place that sees them all: the tokens the service
+//!   reported, next to what was estimated, as numbers only.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use kellu_common::{KelluError, ProviderError, ProviderFailure};
@@ -21,6 +23,8 @@ use kellu_providers::{
 };
 
 use crate::config::Config;
+use crate::plan::estimate_request;
+use crate::usage::{NEUTRAL_MILLI, Sample, UsageSnapshot, UsageTracker};
 
 /// Seconds on a monotonic clock; injectable so tests can move time by hand.
 pub type Clock = Arc<dyn Fn() -> f64 + Send + Sync>;
@@ -219,6 +223,7 @@ pub struct Router {
     config: Config,
     providers: BTreeMap<String, Box<dyn Provider>>,
     clock: Clock,
+    usage: Mutex<UsageTracker>,
 }
 
 impl Router {
@@ -233,6 +238,7 @@ impl Router {
             config,
             providers,
             clock,
+            usage: Mutex::new(UsageTracker::new()),
         }
     }
 
@@ -269,6 +275,45 @@ impl Router {
             .join(",")
     }
 
+    /// What this session has spent so far, as the services reported it.
+    #[must_use]
+    pub fn usage(&self) -> UsageSnapshot {
+        self.usage
+            .lock()
+            .map(|tracker| tracker.snapshot())
+            .unwrap_or_default()
+    }
+
+    /// How to scale a token estimate for `task`, in thousandths ([`NEUTRAL_MILLI`] changes
+    /// nothing). It follows the model the route tries first, measured in this session.
+    #[must_use]
+    pub fn calibration_milli(&self, task: TaskKind) -> u32 {
+        let Some(name) = self.config.route(task.as_str()).chain().next() else {
+            return NEUTRAL_MILLI;
+        };
+        let Some(provider) = self.config.providers().get(name) else {
+            return NEUTRAL_MILLI;
+        };
+        self.usage.lock().map_or(NEUTRAL_MILLI, |tracker| {
+            tracker.calibration_milli(name, &provider.model)
+        })
+    }
+
+    /// Count a request that was answered from a cache, with the estimated prompt it did not send.
+    pub fn note_cache_hit(&self, estimated_prompt: u32) {
+        if let Ok(mut tracker) = self.usage.lock() {
+            tracker.note_cache_hit(estimated_prompt);
+        }
+    }
+
+    fn meter(&self, request: &ChatRequest) -> Meter<'_> {
+        Meter {
+            usage: &self.usage,
+            config: &self.config,
+            estimated: estimate_request(request),
+        }
+    }
+
     fn attempts(&self, task: TaskKind, request: &ChatRequest) -> Attempts<'_> {
         Attempts {
             providers: &self.providers,
@@ -286,9 +331,13 @@ impl Router {
     pub fn chat(&self, task: TaskKind, request: &ChatRequest) -> Result<ChatResponse, KelluError> {
         let mut failures = Vec::new();
         let mut attempts = self.attempts(task, request);
+        let meter = self.meter(request);
         while let Some((name, provider)) = attempts.next(&mut failures) {
             match provider.chat(request) {
-                Ok(response) => return Ok(response),
+                Ok(response) => {
+                    meter.record(name, &response);
+                    return Ok(response);
+                }
                 Err(error) => failures.push(record(name, &error)),
             }
         }
@@ -303,11 +352,45 @@ impl Router {
     pub fn stream(&self, task: TaskKind, request: &ChatRequest) -> RouterStream<'_> {
         RouterStream {
             attempts: self.attempts(task, request),
+            meter: self.meter(request),
             task,
             request: request.clone(),
             failures: Vec::new(),
             current: None,
             ended: false,
+        }
+    }
+}
+
+/// Counts the answers of one request.
+struct Meter<'a> {
+    usage: &'a Mutex<UsageTracker>,
+    config: &'a Config,
+    estimated: u32,
+}
+
+impl Meter<'_> {
+    fn record(&self, provider: &str, response: &ChatResponse) {
+        let model = self
+            .config
+            .providers()
+            .get(provider)
+            .map_or("unknown", |p| p.model.as_str());
+        let reported = response.usage.unwrap_or_default();
+        log::debug!(
+            "usage: {provider}/{model}: estimated {} prompt tokens, reported {:?} + {:?}",
+            self.estimated,
+            reported.prompt_tokens,
+            reported.completion_tokens
+        );
+        if let Ok(mut tracker) = self.usage.lock() {
+            tracker.record(Sample {
+                provider,
+                model,
+                estimated_prompt: self.estimated,
+                prompt_tokens: reported.prompt_tokens,
+                completion_tokens: reported.completion_tokens,
+            });
         }
     }
 }
@@ -322,6 +405,7 @@ struct Current {
 /// The events of a routed stream: text deltas, then one `Done`; or an error.
 pub struct RouterStream<'a> {
     attempts: Attempts<'a>,
+    meter: Meter<'a>,
     task: TaskKind,
     request: ChatRequest,
     failures: Vec<ProviderFailure>,
@@ -375,7 +459,10 @@ impl Iterator for RouterStream<'_> {
                 Some(Ok(event)) => {
                     match &event {
                         StreamEvent::Text(text) if !text.is_empty() => current.delivered = true,
-                        StreamEvent::Done(_) => current.finished = true,
+                        StreamEvent::Done(response) => {
+                            current.finished = true;
+                            self.meter.record(&current.name, response);
+                        }
                         StreamEvent::Text(_) => {}
                     }
                     return Some(Ok(event));

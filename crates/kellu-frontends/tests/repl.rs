@@ -139,3 +139,19 @@ fn a_session_log_that_cannot_start_is_reported_and_the_chat_goes_on() {
     );
     assert_eq!(probe.calls(), 1);
 }
+
+#[test]
+fn usage_is_shown_on_request_and_is_empty_before_any_question() {
+    let (assistant, probe) = common::assistant("hello");
+    let mut repl = Repl::new(&assistant, Theme::at(Level::Ascii), None);
+    let before = run(&mut repl, b"/usage\n/exit\n");
+    assert!(
+        before.out.contains("no model requests yet"),
+        "{}",
+        before.out
+    );
+    let after = run(&mut repl, b"hi there\n/usage\n/exit\n");
+    assert!(after.out.contains("model requests: 1"), "{}", after.out);
+    assert!(!after.out.contains("hi there\n/usage"));
+    assert_eq!(probe.calls(), 1);
+}

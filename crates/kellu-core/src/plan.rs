@@ -7,7 +7,10 @@
 //! * If the prompt still does not fit, it is refused. A truncated task invites an invented answer.
 //!
 //! The estimate only plans. There is no exact tokenizer for every service, so it is deliberately
-//! pessimistic; the service's own count is what a ledger records.
+//! pessimistic; the service's own count is what a ledger records, and the ratio between the two,
+//! measured per model (see `usage`), scales the estimate.
+
+use kellu_providers::{ChatRequest, Message};
 
 /// Estimated tokens for `text`.
 ///
@@ -21,6 +24,44 @@ pub fn estimate_tokens(text: &str) -> u32 {
         quarters += if ch.is_ascii() { 1 } else { 2 };
     }
     u32::try_from(quarters.div_ceil(4)).unwrap_or(u32::MAX)
+}
+
+/// Estimated tokens of the text of a whole request: every message, and the arguments of the tool
+/// calls the model made earlier. The tool specifications are not counted (nothing sends them yet);
+/// the calibration absorbs a constant overhead, not a large one that varies.
+#[must_use]
+pub fn estimate_request(request: &ChatRequest) -> u32 {
+    let mut total = 0_u32;
+    for message in &request.messages {
+        let tokens = match message {
+            Message::System(text) | Message::User(text) | Message::Tool { content: text, .. } => {
+                estimate_tokens(text)
+            }
+            Message::Assistant {
+                content,
+                tool_calls,
+            } => tool_calls
+                .iter()
+                .fold(estimate_tokens(content), |sum, call| {
+                    call.arguments.iter().fold(
+                        sum.saturating_add(estimate_tokens(&call.name)),
+                        |sum, (k, v)| {
+                            sum.saturating_add(estimate_tokens(k))
+                                .saturating_add(estimate_tokens(&v.to_string()))
+                        },
+                    )
+                }),
+        };
+        total = total.saturating_add(tokens);
+    }
+    total
+}
+
+/// `tokens` scaled by `milli` thousandths (1000 changes nothing), rounded up.
+#[must_use]
+pub fn scale_tokens(tokens: u32, milli: u32) -> u32 {
+    let scaled = (u64::from(tokens) * u64::from(milli)).div_ceil(1000);
+    u32::try_from(scaled).unwrap_or(u32::MAX)
 }
 
 /// Replace every run of two or more blank lines by one, and drop trailing spaces and tabs at the
@@ -130,6 +171,26 @@ mod tests {
         assert_eq!(collapse_blank_runs("a   \nb\t\r\n"), "a\nb\n");
         assert_eq!(collapse_blank_runs("a\nb"), "a\nb");
         assert_eq!(collapse_blank_runs(""), "");
+    }
+
+    #[test]
+    fn a_request_is_the_sum_of_its_messages() {
+        let request = ChatRequest::new(vec![
+            Message::system("abcd"),
+            Message::user("abcdefgh"),
+            Message::assistant("abcd"),
+        ])
+        .unwrap();
+        assert_eq!(estimate_request(&request), 1 + 2 + 1);
+    }
+
+    #[test]
+    fn scaling_rounds_up_and_never_overflows() {
+        assert_eq!(scale_tokens(100, 1000), 100);
+        assert_eq!(scale_tokens(100, 1500), 150);
+        assert_eq!(scale_tokens(3, 500), 2);
+        assert_eq!(scale_tokens(0, 3000), 0);
+        assert_eq!(scale_tokens(u32::MAX, 3000), u32::MAX);
     }
 
     #[test]

@@ -93,7 +93,7 @@ does not fit, it is compacted in a fixed order, cheapest loss first: (a) drop th
 (c) narrow the code window around the cursor, both sides together, (d) refuse with a clear message rather than send a truncated task that invites a made-up
 answer. No model call is used to compact: it must not spend tokens to save tokens.
 
-**3. Token counting.** There is no exact tokenizer for every service, so Kellu estimates (characters
+**3. Token counting (done: in-memory session counter, per-model calibration, `/usage`).** There is no exact tokenizer for every service, so Kellu estimates (characters
 per token, per language: Spanish and German cost more than English) and **calibrates** the ratio per
 model from the `usage` each response reports. The estimate only plans; the service's own count is
 what the ledger records.

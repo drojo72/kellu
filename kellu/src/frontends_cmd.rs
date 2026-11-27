@@ -125,5 +125,12 @@ pub fn lsp(services: &Services, out: &mut dyn Write, err: &mut dyn Write) -> u8 
         );
     }
     let mut input = (services.stdin)();
-    Server::new(&assistant, features, home).serve(&mut *input, out)
+    let code = Server::new(&assistant, features, home).serve(&mut *input, out);
+    let usage = assistant.usage();
+    if !usage.is_empty() {
+        for line in usage.lines() {
+            say(err, &format!("usage: {line}"));
+        }
+    }
+    code
 }

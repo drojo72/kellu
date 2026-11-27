@@ -222,7 +222,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "kellu"
-version = "0.2.0-dev.0"
+version = "0.2.0-dev.3"
 dependencies = [
  "clap",
  "kellu-common",
@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "kellu-common"
-version = "0.2.0-dev.0"
+version = "0.2.0-dev.3"
 dependencies = [
  "http",
  "rustix",
@@ -251,7 +251,7 @@ dependencies = [
 
 [[package]]
 name = "kellu-core"
-version = "0.2.0-dev.0"
+version = "0.2.0-dev.3"
 dependencies = [
  "kellu-common",
  "kellu-providers",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "kellu-frontends"
-version = "0.2.0-dev.0"
+version = "0.2.0-dev.3"
 dependencies = [
  "kellu-common",
  "kellu-core",
@@ -280,7 +280,7 @@ dependencies = [
 
 [[package]]
 name = "kellu-providers"
-version = "0.2.0-dev.0"
+version = "0.2.0-dev.3"
 dependencies = [
  "http",
  "kellu-common",
@@ -291,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "kellu-sandbox"
-version = "0.2.0-dev.0"
+version = "0.2.0-dev.3"
 dependencies = [
  "kellu-common",
  "kellu-security",
@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "kellu-security"
-version = "0.2.0-dev.0"
+version = "0.2.0-dev.3"
 dependencies = [
  "kellu-common",
  "rustix",
@@ -314,7 +314,7 @@ dependencies = [
 
 [[package]]
 name = "kellu-tools"
-version = "0.2.0-dev.0"
+version = "0.2.0-dev.3"
 dependencies = [
  "kellu-common",
  "kellu-sandbox",

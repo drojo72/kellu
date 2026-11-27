@@ -19,7 +19,7 @@ pub const MAX_LINE_BYTES: usize = 16 * 1024;
 /// Messages kept in memory (older ones are dropped first).
 pub const MAX_MESSAGES: usize = 100;
 
-const HELP: &str = "/help   this list\n/clear  forget the conversation\n/exit   leave (Ctrl-D too)";
+const HELP: &str = "/help   this list\n/usage  tokens spent in this session\n/clear  forget the conversation\n/exit   leave (Ctrl-D too)";
 
 /// The terminal chat.
 pub struct Repl<'a> {
@@ -123,6 +123,11 @@ impl<'a> Repl<'a> {
                 "/exit" | "/quit" => break,
                 "/help" => {
                     let _ = writeln!(out, "{HELP}");
+                }
+                "/usage" => {
+                    for line in self.assistant.usage().lines() {
+                        let _ = writeln!(out, "{}", self.theme.paint(Role::Note, &line));
+                    }
                 }
                 "/clear" => {
                     self.history.clear();
